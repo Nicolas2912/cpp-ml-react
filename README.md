@@ -1,87 +1,111 @@
-# Linear Regression Application
+# C++ ML Playground: Linear Regression & Neural Network
 
-A full-stack application for training and visualizing a linear regression model using C++, Node.js, and React.
+A full-stack application demonstrating Linear Regression and a basic Feedforward Neural Network trained using C++ and visualized with React, Node.js, and WebSockets.
 
 ## Features
 
-- Train a linear regression model with custom parameters (learning rate, iterations, batch size)
-- Visualize data points and the resulting regression line
-- Make predictions on new data points
-- View model performance metrics (MSE, R² score)
-- Dark/light theme toggle
+-   **Linear Regression**:
+    -   Train a model using the analytical solution (normal equation).
+    -   Visualize data points and the resulting regression line.
+    -   Make predictions on new data points.
+    -   View model performance metrics (MSE, R² score).
+-   **Neural Network**:
+    -   Define custom network structures (e.g., "1-4-1").
+    -   Train a feedforward network using gradient descent.
+    -   Specify learning rate and number of epochs.
+    -   Real-time training loss visualization (MSE vs. Epoch) via WebSockets.
+    -   Visualize NN predictions alongside original data points.
+    -   View final MSE and training time.
+-   **General**:
+    -   Input data manually or generate random datasets with adjustable linearity.
+    -   Interactive charts powered by Chart.js.
+    -   Modern UI built with React and DaisyUI/Tailwind CSS.
+    -   Dark/light theme toggle.
 
 ## Project Structure
 
-- **Client**: React frontend with interactive UI using DaisyUI
-- **Server**: Node.js/Express API to handle requests
-- **C++ Engine**: Core linear regression implementation in C++
+-   **`client/`**: React frontend using `create-react-app`. Handles UI, visualization, and WebSocket communication.
+-   **`server/`**: Node.js/Express backend API. Manages requests, invokes the C++ executable, and relays NN training progress via WebSockets.
+-   **`cpp/`**: C++ engine containing:
+    -   `linear_regression.h/.cpp`: Implementation of the Linear Regression model.
+    -   `neural_network.h/.cpp`: Implementation of the Feedforward Neural Network.
+    -   `main_server.cpp`: Main C++ application handling command-line arguments (`lr_train`, `nn_train_predict`) and interacting with the Node.js server via stdin/stdout.
+    -   `Makefile`: Used to build the C++ executable.
 
 ## Installation
 
 ### Prerequisites
 
-- Node.js (14+)
-- C++ compiler (g++ or MSVC)
-- Make (for compiling C++ code)
+-   Node.js (v14 or higher recommended)
+-   npm (usually comes with Node.js)
+-   A C++ compiler supporting C++11 or later (e.g., g++, Clang, MSVC)
+-   `make` build tool (standard on Linux/macOS, can be installed on Windows e.g., via Chocolatey `choco install make` or MinGW/MSYS2)
 
 ### Setup
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/linear-regression.git
-   cd linear-regression
-   ```
+1.  **Clone the repository**:
+    ```bash
+    git clone <your-repository-url>
+    cd <repository-directory>
+    ```
 
-2. Build the C++ executable:
-   ```
-   cd cpp
-   make
-   ```
+2.  **Build the C++ executable**:
+    The server expects the executable `linear_regression_app` (or `linear_regression_app.exe` on Windows) in the `cpp/` directory.
+    ```bash
+    cd cpp
+    make # This should create the 'linear_regression_app' executable
+    cd ..
+    ```
+    *(Note: Verify the `Makefile` target name matches `linear_regression_app`)*
 
-3. Install and start the server:
-   ```
-   cd ../server
-   npm install
-   npm start
-   ```
+3.  **Install Server Dependencies and Start**:
+    ```bash
+    cd server
+    npm install
+    npm start
+    ```
+    *(Keep this terminal running)*
 
-4. Install and start the client:
-   ```
-   cd ../client
-   npm install
-   npm start
-   ```
+4.  **Install Client Dependencies and Start**:
+    Open a *new* terminal in the project root.
+    ```bash
+    cd client
+    npm install
+    npm start
+    ```
 
-The application should now be running at http://localhost:3000
+The application should now open automatically in your browser, typically at `http://localhost:3000`. The server runs on `http://localhost:3001`.
 
 ## Usage
 
-1. **Train the Model**:
-   - Enter comma-separated X and Y values
-   - Adjust hyperparameters as needed (learning rate, iterations, batch size)
-   - Click "Train Model"
+1.  **Input Data**:
+    -   Enter comma-separated X and Y values in the text areas.
+    -   *Alternatively*, configure the number of points and linearity factor, then click "Generate" to create random data.
 
-2. **View Results**:
-   - The model's slope, intercept, and performance metrics will display
-   - The visualization shows data points and the regression line
+2.  **Linear Regression**:
+    -   Click "Train Linear Regression".
+    -   Results (Slope, Intercept, MSE, R², Time) will appear below the button.
+    -   The regression line will be drawn on the chart.
+    -   Enter an X value under "Predict Y for LR Model" and click "Predict" to see the predicted point (green cross) and value.
 
-3. **Make Predictions**:
-   - Enter an X value in the prediction field
-   - Click "Predict" to get the corresponding Y value
-   - The prediction point will appear on the chart
+3.  **Neural Network**:
+    -   Configure the "Layer Sizes" (e.g., `1-4-1`), "Learning Rate", and "Epochs".
+    -   Click "Train NN & Predict".
+    -   Training progress (MSE vs. Epoch) will stream to the loss chart below the button.
+    -   Once complete, final results (Final MSE, Time) will appear.
+    -   NN predictions for the input X values will be plotted as orange triangles on the main chart.
+
+4.  **Visualization**:
+    -   The main chart displays data points, the LR line (if trained), LR predictions (if made), and NN predictions (if trained).
+    -   Hover over points/lines for details.
+    -   The chart automatically adjusts its axes to fit the data and predictions.
 
 ## Technologies
 
-- **Frontend**: React, Chart.js, DaisyUI/Tailwind CSS
-- **Backend**: Node.js, Express
-- **Algorithm**: C++ implementation of gradient descent
-
-## Performance
-
-The C++ implementation provides superior performance compared to JavaScript alternatives:
-- Efficient gradient descent algorithm
-- Mini-batch training for improved scalability
-- Fast prediction capabilities
+-   **Frontend**: React, Chart.js, DaisyUI, Tailwind CSS
+-   **Backend**: Node.js, Express, ws (for WebSockets)
+-   **C++ Engine**: Standard C++ (C++11) for Linear Regression (analytical solution) and Neural Network (gradient descent).
+-   **Build Tools**: Make, npm
 
 ## License
 

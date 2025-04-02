@@ -9,13 +9,6 @@ int main() {
     std::vector<double> X = {1, 2, 3, 4, 5};
     std::vector<double> y = {2, 4, 5, 4, 5};
 
-    // Create and train the linear regression model using gradient descent
-    LinearRegression model_gd;
-    auto start_gd = std::chrono::high_resolution_clock::now();
-    model_gd.fit(X, y);
-    auto end_gd = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> duration_gd = end_gd - start_gd;
-
     // Create and train another model using analytical solution
     LinearRegression model_analytical;
     auto start_analytical = std::chrono::high_resolution_clock::now();

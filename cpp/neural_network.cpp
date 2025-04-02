@@ -87,21 +87,27 @@ Vector NeuralNetwork::forward_pass(const Vector& input) {
     }
 
     layer_outputs_.assign(layer_sizes_.size(), Vector());
-    layer_inputs_.assign(layer_sizes_.size() -1 , Vector()); // No inputs for the input layer itself
+    layer_inputs_.assign(layer_sizes_.size() - 1 , Vector()); // No inputs for the input layer itself
 
     layer_outputs_[0] = input; // Output of layer 0 is the input itself
 
     Vector current_output = input;
+    size_t num_hidden_layers = layer_sizes_.size() - 2; // Number of layers before the output layer
 
-    for (size_t i = 0; i < layer_sizes_.size() - 1; ++i) {
+    // Process layers
+    for (size_t i = 0; i < layer_sizes_.size() - 1; ++i) { // Iterate through weights/biases
         // Calculate weighted input: z = W * a_prev + b
         Vector z = add(multiply(weights_[i], current_output), biases_[i]);
         layer_inputs_[i] = z; // Store the input *before* activation
 
-        // Calculate activation: a = sigmoid(z)
+        // Calculate activation (sigmoid for hidden, linear for output)
         current_output.resize(z.size());
-        std::transform(z.begin(), z.end(), current_output.begin(), sigmoid);
-        layer_outputs_[i + 1] = current_output; // Store the output *after* activation
+        if (i < num_hidden_layers) { // Apply sigmoid to hidden layers (layers 0 to num_hidden_layers-1)
+             std::transform(z.begin(), z.end(), current_output.begin(), sigmoid);
+        } else { // Apply linear activation (identity) to output layer (layer num_hidden_layers)
+             current_output = z; // a = z
+        }
+       layer_outputs_[i + 1] = current_output; // Store the output *after* activation/identity
     }
 
     return current_output; // Final layer's output
@@ -115,10 +121,15 @@ Vector NeuralNetwork::predict(const Vector& input) {
     }
 
     Vector current_output = input;
-    for (size_t i = 0; i < layer_sizes_.size() - 1; ++i) {
+    size_t num_layers = layer_sizes_.size();
+    for (size_t i = 0; i < num_layers - 1; ++i) {
         Vector z = add(multiply(weights_[i], current_output), biases_[i]);
         current_output.resize(z.size());
-        std::transform(z.begin(), z.end(), current_output.begin(), sigmoid);
+        if (i < num_layers - 2) { // Apply sigmoid to hidden layers
+             std::transform(z.begin(), z.end(), current_output.begin(), sigmoid);
+        } else { // Apply linear activation (identity) to output layer
+             current_output = z; // a = z
+        }
     }
     return current_output;
 }
@@ -137,13 +148,12 @@ void NeuralNetwork::backpropagate(const Vector& input, const Vector& target) {
     std::vector<Vector> deltas(num_layers - 1); // Error deltas for each layer (excluding input)
 
     // 2. Calculate delta for the output layer (L)
-    // delta_L = (output_L - target) * sigmoid_derivative(z_L)
+    // delta_L = (output_L - target) * derivative_of_activation(z_L)
     Vector error_derivative = mean_squared_error_derivative(predicted_output, target);
-    Vector last_layer_input = layer_inputs_.back();
-    Vector sigmoid_deriv_output(last_layer_input.size());
-    std::transform(last_layer_input.begin(), last_layer_input.end(), sigmoid_deriv_output.begin(), sigmoid_derivative);
+    Vector last_layer_input = layer_inputs_.back(); // z_L
 
-    deltas.back() = elementwise_multiply(error_derivative, sigmoid_deriv_output);
+    // For linear output activation, the derivative is 1
+    deltas.back() = error_derivative; // delta_L = (output_L - target) * 1
 
     // 3. Propagate deltas backwards from L-1 to layer 1
     for (int i = num_layers - 2; i > 0; --i) { // Note: int for loop condition
@@ -184,6 +194,69 @@ void NeuralNetwork::train(const Vector& input, const Vector& target) {
     backpropagate(input, target);
     // For batch/stochastic gradient descent, you would accumulate gradients
     // or call this multiple times within an epoch loop.
+}
+
+
+// --- Train for multiple epochs with reporting ---
+Vector NeuralNetwork::train_for_epochs(
+    const std::vector<Vector>& inputs,
+    const std::vector<Vector>& targets,
+    int epochs,
+    int report_every_n_epochs
+) {
+    if (inputs.empty() || inputs.size() != targets.size()) {
+        throw std::invalid_argument("Input and target datasets must be non-empty and have the same size.");
+    }
+
+    size_t n_samples = inputs.size();
+    std::vector<size_t> indices(n_samples);
+    std::iota(indices.begin(), indices.end(), 0);
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    Vector final_predictions;
+    final_predictions.reserve(n_samples);
+
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        // Shuffle data for stochasticity (optional but often good)
+        std::shuffle(indices.begin(), indices.end(), gen);
+
+        // Train on each sample in the (shuffled) dataset
+        for (size_t i = 0; i < n_samples; ++i) {
+            size_t idx = indices[i];
+            // Simple stochastic gradient descent (one sample at a time)
+            backpropagate(inputs[idx], targets[idx]);
+            // Note: For larger datasets, mini-batch gradient descent is more common
+        }
+
+        // Report loss periodically
+        if ((epoch + 1) % report_every_n_epochs == 0 || epoch == epochs - 1) {
+            double current_mse = 0.0;
+            // Calculate MSE over the *entire* dataset
+            for (size_t i = 0; i < n_samples; ++i) {
+                 // Use predict, not forward_pass, as we don't need intermediate state here
+                Vector prediction = predict(inputs[i]);
+                current_mse += mean_squared_error(prediction, targets[i]);
+            }
+            current_mse /= n_samples;
+            std::cout << "epoch=" << (epoch + 1) << ",mse=" << current_mse << std::endl;
+        }
+    }
+
+    // After training, calculate final predictions for the entire input set
+    final_predictions.clear();
+    for(const auto& input : inputs) {
+        Vector prediction = predict(input);
+        // Assuming single output neuron for simplicity based on frontend
+        if (!prediction.empty()) {
+            final_predictions.push_back(prediction[0]);
+        } else {
+            final_predictions.push_back(NAN); // Indicate error if prediction failed
+        }
+    }
+
+    return final_predictions;
 }
 
 

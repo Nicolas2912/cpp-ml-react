@@ -23,6 +23,14 @@ public:
     // Train the network on a single data point (input and target output)
     void train(const Vector& input, const Vector& target);
 
+    // Train the network over multiple epochs with periodic loss reporting
+    Vector train_for_epochs(
+        const std::vector<Vector>& inputs,
+        const std::vector<Vector>& targets,
+        int epochs,
+        int report_every_n_epochs = 10 // Report every 10 epochs by default
+    );
+
     // --- Activation Functions ---
     // Sigmoid activation function
     static double sigmoid(double x);
