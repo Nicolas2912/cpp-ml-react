@@ -14,7 +14,7 @@ A full-stack application demonstrating Linear Regression and a basic Feedforward
     -   Train a feedforward network using gradient descent.
     -   Specify learning rate and number of epochs.
     -   Real-time training loss visualization (MSE vs. Epoch) via WebSockets.
-    -   Visualize NN predictions alongside original data points.
+    -   Visualize NN predictions (orange triangles) alongside original data points, connected by a smooth interpolated line.
     -   View final MSE and training time.
 -   **General**:
     -   Input data manually or generate random datasets with adjustable linearity.
@@ -44,14 +44,14 @@ A full-stack application demonstrating Linear Regression and a basic Feedforward
 ### Setup
 
 1.  **Clone the repository**:
-    ```bash
+    ```powershell
     git clone <your-repository-url>
     cd <repository-directory>
     ```
 
 2.  **Build the C++ executable**:
     The server expects the executable `linear_regression_app` (or `linear_regression_app.exe` on Windows) in the `cpp/` directory.
-    ```bash
+    ```powershell
     cd cpp
     make # This should create the 'linear_regression_app' executable
     cd ..
@@ -59,7 +59,7 @@ A full-stack application demonstrating Linear Regression and a basic Feedforward
     *(Note: Verify the `Makefile` target name matches `linear_regression_app`)*
 
 3.  **Install Server Dependencies and Start**:
-    ```bash
+    ```powershell
     cd server
     npm install
     npm start
@@ -68,7 +68,7 @@ A full-stack application demonstrating Linear Regression and a basic Feedforward
 
 4.  **Install Client Dependencies and Start**:
     Open a *new* terminal in the project root.
-    ```bash
+    ```powershell
     cd client
     npm install
     npm start
@@ -96,7 +96,7 @@ The application should now open automatically in your browser, typically at `htt
     -   NN predictions for the input X values will be plotted as orange triangles on the main chart.
 
 4.  **Visualization**:
-    -   The main chart displays data points, the LR line (if trained), LR predictions (if made), and NN predictions (if trained).
+    -   The main chart displays data points, the LR line (if trained), LR predictions (if made), and NN predictions (triangles connected by an interpolated curve, if trained).
     -   Hover over points/lines for details.
     -   The chart automatically adjusts its axes to fit the data and predictions.
 
