@@ -125,7 +125,7 @@ function inverseScaleData(scaledData, min, range) {
 
 // --- API Routes ---
 
-// POST /api/lr_train (Add Timeout)
+// POST /api/lr_train (Modified)
 app.post('/api/lr_train', (req, res) => {
     console.log('--- LR Train Request Received ---'); // <-- Log Start
     const { x_values, y_values } = req.body;
@@ -139,8 +139,12 @@ app.post('/api/lr_train', (req, res) => {
     const y_str = y_values.join(',');
     const args = ['lr_train']; // Argument for C++ main()
 
-    console.log(`LR Train: Spawning C++: ${cppExecutablePath} ${args.join(' ')}`);
-    const cppProcess = spawn(cppExecutablePath, args);
+    console.log(`LR Train: Spawning C++ via cmd: ${cppExecutablePath} ${args.join(' ')}`);
+    const cppDirectory = path.dirname(cppExecutablePath);
+    // Use cmd.exe /c to execute the command
+    const cppProcess = spawn('cmd.exe', ['/c', path.basename(cppExecutablePath), ...args], {
+        cwd: cppDirectory // Set Current Working Directory
+    });
 
     // Data to send to C++ stdin
     const stdinData = `${x_str}\n${y_str}\n`; // Ensure final newline might help some shells/C++ runtimes
@@ -304,7 +308,6 @@ app.post('/api/lr_predict', (req, res) =>{
         console.warn("[BACKEND] LR Predict: Headers already sent before sending success response. This shouldn't happen.");
     }
 });
-
 
 // POST /api/nn_train_predict (MODIFIED for Streaming and Final Results)
 app.post('/api/nn_train_predict', (req, res) => {

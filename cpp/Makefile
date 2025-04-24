@@ -6,7 +6,7 @@ CXXFLAGS = -std=c++11 -O2 -Wall -fopenmp
 LDFLAGS = -lm -fopenmp
 
 # Source files
-SRCS = linear_regression.cpp main_server.cpp
+SRCS = linear_regression.cpp main_server.cpp neural_network.cpp
 # Object files
 OBJS = $(SRCS:.cpp=.o)
 # Executable name
@@ -20,12 +20,12 @@ $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 # Compile source files into object files
-%.o: %.cpp linear_regression.h
+%.o: %.cpp linear_regression.h neural_network.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Clean up build files - Windows compatible
 clean:
-	-del $(OBJS) $(TARGET) 2> nul || (exit 0) # Use del, ignore errors if files don't exist
+	-del $(OBJS) $(TARGET) 2> nul
 
 # Phony targets
 .PHONY: all clean
