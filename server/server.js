@@ -153,10 +153,12 @@ app.post('/api/lr_train', (req, res) => {
 
     // Data to send to C++ stdin
     const stdinData = `${x_str}\n${y_str}\n`; // Ensure final newline might help some shells/C++ runtimes
-    console.log(`LR Train: Writing to stdin:\n${stdinData}`); // <-- Log Input
+    console.log(`LR Train: Writing to stdin (on spawn):\n${stdinData}`); // <-- Log Input
 
     let stdoutData = '';
     let stderrData = '';
+    let killedForTimeout = false;
+    let timeoutHandle = null;
 
     // Error handler for spawn itself
     cppProcess.on('error', (err) => {
@@ -166,6 +168,31 @@ app.post('/api/lr_train', (req, res) => {
         if (!res.headersSent) {
              res.status(500).json({ error: `Server error: Failed to execute LR training process. Check server logs. Path: ${cppExecutablePath}` });
         }
+    });
+
+    // Only write to stdin once the process has actually spawned
+    cppProcess.on('spawn', () => {
+        // Set up timeout to avoid hanging processes
+        timeoutHandle = setTimeout(() => {
+            console.error(`LR Train Error: C++ process exceeded timeout of ${CPP_PROCESS_TIMEOUT_MS} ms. Killing process.`);
+            killedForTimeout = true;
+            try { cppProcess.kill('SIGKILL'); } catch (e) { /* ignore */ }
+        }, CPP_PROCESS_TIMEOUT_MS);
+
+        // --- Write data to C++ stdin ---
+        cppProcess.stdin.write(stdinData, (err) => {
+             if (err) {
+                 console.error("LR Train Error: Failed to write to C++ stdin:", err);
+                  // Try to close stdin anyway to free resources
+                  try { cppProcess.stdin.end(); } catch (e) { /* ignore */ }
+             } else {
+                 console.log("LR Train: Successfully wrote to stdin.");
+                 // --- IMPORTANT: End the stdin stream ---
+                 cppProcess.stdin.end(() => {
+                     console.log("LR Train: stdin stream ended.");
+                 });
+             }
+        });
     });
 
     // Stderr listener
@@ -184,6 +211,7 @@ app.post('/api/lr_train', (req, res) => {
 
     // Close listener (crucial)
     cppProcess.on('close', (code) => {
+        if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null; }
         console.log(`--- LR Train C++ process exited with code ${code} ---`);
         if (stderrData) {
             console.error(`LR Train C++ Final Stderr:\n${stderrData}`);
@@ -193,6 +221,10 @@ app.post('/api/lr_train', (req, res) => {
         if (res.headersSent) {
              console.warn("LR Train: Headers already sent before C++ close event. Cannot send response.");
              return;
+        }
+
+        if (killedForTimeout) {
+            return res.status(504).json({ error: `LR Training timed out after ${CPP_PROCESS_TIMEOUT_MS} ms.` });
         }
 
         if (code !== 0) {
@@ -244,20 +276,7 @@ app.post('/api/lr_train', (req, res) => {
         });
     });
 
-    // --- Write data to C++ stdin ---
-    cppProcess.stdin.write(stdinData, (err) => {
-         if (err) {
-             console.error("LR Train Error: Failed to write to C++ stdin:", err);
-              // Try to close stdin anyway? Or kill process? Might be stuck.
-              cppProcess.stdin.end(); // Still try to end
-         } else {
-             console.log("LR Train: Successfully wrote to stdin.");
-             // --- IMPORTANT: End the stdin stream ---
-             cppProcess.stdin.end(() => {
-                 console.log("LR Train: stdin stream ended.");
-             });
-         }
-    });
+    // Note: stdin write is handled in the 'spawn' event above
 });
 
 // POST /api/lr_predict (no changes)
