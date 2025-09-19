@@ -357,11 +357,14 @@ function App() {
       !isNaN(predictionYLr) &&
       bounds
     ) {
+      const lrPredictionStroke = isDark
+        ? "rgba(255, 255, 255, 1)" // White X in dark mode
+        : "rgba(0, 0, 0, 1)"; // Black X in light mode
       datasets.push({
         label: "LR Prediction",
         data: [{ x: predictionXLr, y: predictionYLr }],
-        backgroundColor: "rgba(0, 255, 0, 1)", // Changed to Green
-        borderColor: "rgba(0, 0, 0, 1)", // Match background for solid color
+        backgroundColor: "rgba(0, 255, 0, 1)", // Keep green accent for visibility
+        borderColor: lrPredictionStroke, // X color adapts to theme
         borderWidth: 2, // Added for thicker lines
         pointRadius: 8, // Keep size
         pointStyle: "crossRot",
@@ -499,6 +502,7 @@ function App() {
     nnResults,
     lastPredictedXNN,
     nnPrediction,
+    isDark,
   ]);
 
   const dataOnlyDatasets = useMemo(() => {
@@ -1475,7 +1479,7 @@ function App() {
                     </p>
                   </div>
                   <div
-                    className={`inline-flex rounded-full border p-1 text-xs sm:text-sm font-semibold ${isDark ? 'border-slate-700 bg-slate-900/50' : 'border-slate-200 bg-slate-100/80'}`}
+                    className={`inline-flex w-fit rounded-full border p-1 text-xs sm:text-sm font-semibold ${isDark ? 'border-slate-700 bg-slate-900/50' : 'border-slate-200 bg-slate-100/80'}`}
                   >
                     <button
                       type="button"
