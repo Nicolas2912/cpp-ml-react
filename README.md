@@ -1,5 +1,9 @@
 # C++ ML Playground: Linear Regression & Neural Network
 
+[![CI](https://github.com/Nicolas2912/cpp-ml-react/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Nicolas2912/cpp-ml-react/actions/workflows/ci.yml)
+[![C++ Build & Tests](https://github.com/Nicolas2912/cpp-ml-react/actions/workflows/ci.yml/badge.svg?branch=master&job=C%2B%2B%20Build%20%26%20Tests)](https://github.com/Nicolas2912/cpp-ml-react/actions/workflows/ci.yml)
+[![Client Tests](https://github.com/Nicolas2912/cpp-ml-react/actions/workflows/ci.yml/badge.svg?branch=master&job=Client%20Tests)](https://github.com/Nicolas2912/cpp-ml-react/actions/workflows/ci.yml)
+
 A full-stack application demonstrating Linear Regression and a basic Feedforward Neural Network trained using C++ and visualized with React, Node.js, and WebSockets.
 
 ## Features
