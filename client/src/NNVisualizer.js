@@ -1,7 +1,7 @@
-import React from 'react';
-import ReactFlow, { MiniMap, Controls, Background, Position } from 'reactflow';
+import React from "react";
+import ReactFlow, { Controls, Background, Position } from "reactflow";
 
-import 'reactflow/dist/style.css';
+import "reactflow/dist/style.css";
 
 // Helper function to parse layer string and generate nodes/edges
 const generateFlowElements = (layerString) => {
@@ -75,13 +75,22 @@ const generateFlowElements = (layerString) => {
   return { nodes, edges };
 };
 
-function NNVisualizer({ layerStructure }) {
+function NNVisualizer({ layerStructure, height = 360 }) {
   const { nodes, edges } = generateFlowElements(layerStructure);
 
   // Basic error handling or placeholder if structure is invalid/empty
   if (nodes.length === 0) {
     return (
-      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'grey' }}>
+      <div
+        style={{
+          height: typeof height === "number" ? `${height}px` : height,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "grey",
+          width: "100%",
+        }}
+      >
         <p>Enter a valid layer structure (e.g., 1-4-1) to visualize.</p>
       </div>
     );
@@ -89,7 +98,14 @@ function NNVisualizer({ layerStructure }) {
 
   return (
     // Set explicit height for the container
-    <div style={{ height: '300px', width: '100%', border: '1px solid #ccc', borderRadius: '8px' }}>
+    <div
+      style={{
+        height: typeof height === "number" ? `${height}px` : height,
+        width: "100%",
+        border: "1px solid #ccc",
+        borderRadius: "8px",
+      }}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}

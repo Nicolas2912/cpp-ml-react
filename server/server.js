@@ -139,11 +139,16 @@ app.post('/api/lr_train', (req, res) => {
     const y_str = y_values.join(',');
     const args = ['lr_train']; // Argument for C++ main()
 
-    console.log(`LR Train: Spawning C++ via cmd: ${cppExecutablePath} ${args.join(' ')}`);
     const cppDirectory = path.dirname(cppExecutablePath);
-    // Use cmd.exe /c to execute the command
-    const cppProcess = spawn('cmd.exe', ['/c', path.basename(cppExecutablePath), ...args], {
-        cwd: cppDirectory // Set Current Working Directory
+    const isWindows = process.platform === 'win32';
+    const command = isWindows ? 'cmd.exe' : cppExecutablePath;
+    const commandArgs = isWindows
+        ? ['/c', path.basename(cppExecutablePath), ...args]
+        : args;
+
+    console.log(`LR Train: Spawning C++ via ${command} ${commandArgs.join(' ')}`);
+    const cppProcess = spawn(command, commandArgs, {
+        cwd: cppDirectory // Ensure the executable runs relative to its directory
     });
 
     // Data to send to C++ stdin
