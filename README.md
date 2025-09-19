@@ -6,6 +6,8 @@
 
 A full-stack application demonstrating Linear Regression and a basic Feedforward Neural Network trained using C++ and visualized with React, Node.js, and WebSockets.
 
+![gif](./gif/app.gif)
+
 ## Features
 
 -   **Linear Regression**:
