@@ -1193,7 +1193,7 @@ function App() {
         />
 
         <header className="relative z-10">
-          <div className="max-w-7xl mx-auto flex flex-col gap-8 px-4 py-12 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+          <div className="max-w-screen-2xl 2xl:max-w-[1800px] mx-auto flex flex-col gap-8 px-4 py-12 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
             <div className="space-y-5 max-w-2xl">
               <span className={sectionLabelClass}>
                 C++ Machine Learning Playground
@@ -1282,7 +1282,7 @@ function App() {
           </div>
         </header>
 
-        <main className="relative z-10 max-w-7xl mx-auto space-y-10 px-4 pb-16 sm:px-6 lg:px-8">
+        <main className="relative z-10 max-w-screen-2xl 2xl:max-w-[1800px] mx-auto space-y-10 px-4 pb-16 sm:px-6 lg:px-8">
           {(lrError || nnError || wsError) && (
             <div className={`${panelClass} p-6 sm:p-7`} role="alert">
               <div
@@ -1345,7 +1345,7 @@ function App() {
             </div>
           )}
 
-          <div className="grid gap-8 items-start xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+          <div className="grid gap-8 items-start xl:grid-cols-[minmax(0,400px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
             <div className="space-y-8 xl:flex xl:flex-col xl:space-y-6">
               <section className={`${panelClass} p-7 space-y-6`}>
                 <div className="space-y-4">
@@ -1779,7 +1779,7 @@ function App() {
         </main>
 
         <footer
-          className={`${ribbonClass} relative z-10 mx-auto mt-6 w-full max-w-7xl rounded-3xl px-6 py-4 text-center text-xs sm:text-sm`}
+          className={`${ribbonClass} relative z-10 mx-auto mt-6 w-full max-w-screen-2xl 2xl:max-w-[1800px] rounded-3xl px-6 py-4 text-center text-xs sm:text-sm`}
         >
           C++ Linear Regression &amp; Neural Network Playground · Built with
           React, Chart.js, and Node.js
