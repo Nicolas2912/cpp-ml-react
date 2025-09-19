@@ -29,17 +29,10 @@ void LinearRegression::fit(const std::vector<double>& X, const std::vector<doubl
     std::vector<size_t> indices(n_samples);
     std::iota(indices.begin(), indices.end(), 0);
     
-    // Pre-compute X squared for faster gradient calculations
-    std::vector<double> X_squared(n_samples);
-    #pragma omp parallel for schedule(static)
-    for (size_t i = 0; i < n_samples; ++i) {
-        X_squared[i] = X[i] * X[i];
-    }
-
     // Early stopping parameters
     const double tolerance = 1e-6;
     const int patience = 5;
-    double best_mse = std::numeric_limits<double>::max();
+    double best_mse = std::numeric_limits<double>::infinity();
     int no_improvement_count = 0;
 
     // Initialize random number generator
@@ -53,9 +46,6 @@ void LinearRegression::fit(const std::vector<double>& X, const std::vector<doubl
     for (int iter = 0; iter < max_iterations; ++iter) {
         // Shuffle indices
         std::shuffle(indices.begin(), indices.end(), gen);
-
-        double epoch_mse = 0.0;
-        int num_batches = 0;
 
         // Process mini-batches
         for (size_t batch_start = 0; batch_start < n_samples; batch_start += batch_size) {
@@ -72,16 +62,14 @@ void LinearRegression::fit(const std::vector<double>& X, const std::vector<doubl
             // Compute gradients using SIMD-friendly operations
             double slope_gradient = 0.0;
             double intercept_gradient = 0.0;
-            double batch_mse = 0.0;
 
-            #pragma omp parallel for reduction(+:slope_gradient, intercept_gradient, batch_mse) schedule(static)
+            #pragma omp parallel for reduction(+:slope_gradient, intercept_gradient) schedule(static)
             for (size_t i = 0; i < current_batch_size; ++i) {
                 const double prediction = slope * batch_X[i] + intercept;
                 const double error = prediction - batch_y[i];
                 
                 slope_gradient += error * batch_X[i];
                 intercept_gradient += error;
-                batch_mse += error * error;
             }
 
             // Update parameters
@@ -89,15 +77,15 @@ void LinearRegression::fit(const std::vector<double>& X, const std::vector<doubl
             slope -= learning_rate * (slope_gradient * batch_scale);
             intercept -= learning_rate * (intercept_gradient * batch_scale);
 
-            epoch_mse += batch_mse;
-            num_batches++;
         }
 
-        // Calculate average MSE for this epoch
-        epoch_mse /= num_batches;
+        const double epoch_mse = mean_squared_error(X, y);
 
         // Early stopping check
-        if (epoch_mse < best_mse - tolerance) {
+        const double improvement = best_mse - epoch_mse;
+        const double relative_threshold = tolerance * std::max(1.0, best_mse);
+
+        if (!std::isfinite(best_mse) || improvement > relative_threshold) {
             best_mse = epoch_mse;
             no_improvement_count = 0;
         } else {
