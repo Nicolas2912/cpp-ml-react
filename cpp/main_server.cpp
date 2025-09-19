@@ -119,6 +119,7 @@ void printUsage(const char* progName) {
     std::cerr << "    (Trains NN using train_for_epochs, outputs loss updates and final predictions)" << std::endl;
 }
 
+#ifndef UNIT_TESTING
 int main(int argc, char* argv[]) {
     std::cout.precision(std::numeric_limits<double>::max_digits10);
 
@@ -260,3 +261,4 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 // --- END OF FILE main_server.cpp ---
+#endif // UNIT_TESTING

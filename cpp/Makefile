@@ -50,7 +50,33 @@ $(TARGET): $(OBJS)
 
 # Clean up build files - Windows compatible
 clean:
-	-del $(OBJS) $(TARGET) 2> nul
+	rm -f $(OBJS) $(TARGET) $(TEST_TARGETS)
+
+# Test targets
+TEST_TARGETS = linear_regression_tests neural_network_tests main_server_tests
+
+linear_regression_tests: tests/linear_regression_tests.cpp linear_regression.cpp linear_regression.h
+	$(CXX) $(CXXFLAGS) tests/linear_regression_tests.cpp linear_regression.cpp -o $@ $(LDFLAGS)
+
+neural_network_tests: tests/neural_network_tests.cpp neural_network.cpp neural_network.h
+	$(CXX) $(CXXFLAGS) tests/neural_network_tests.cpp neural_network.cpp -o $@ $(LDFLAGS)
+
+main_server_tests: tests/main_server_tests.cpp linear_regression.cpp neural_network.cpp
+	$(CXX) $(CXXFLAGS) -DUNIT_TESTING tests/main_server_tests.cpp linear_regression.cpp neural_network.cpp -o $@ $(LDFLAGS)
+
+tests: $(TEST_TARGETS)
+
+test_all: tests
+	./linear_regression_tests
+	./neural_network_tests
+	./main_server_tests
+
+coverage: clean
+	$(MAKE) CXXFLAGS="$(CXXFLAGS) --coverage -O0" LDFLAGS="$(LDFLAGS) --coverage" tests
+	./linear_regression_tests
+	./neural_network_tests
+	./main_server_tests
+	gcov -o . linear_regression.cpp neural_network.cpp main_server.cpp
 
 # Phony targets
-.PHONY: all clean
+.PHONY: all clean tests test_all coverage $(TEST_TARGETS)
