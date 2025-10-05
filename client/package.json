@@ -22,7 +22,7 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "postinstall": "node scripts/apply-webpack-dev-server-origin-fix.js"
+    "postinstall": "node scripts/ensure-cra-wds-compat.js"
   },
   "eslintConfig": {
     "extends": [
@@ -50,6 +50,7 @@
   },
   "overrides": {
     "css-select": "4.3.0",
-    "nth-check": "2.1.1"
+    "nth-check": "2.1.1",
+    "webpack-dev-server": "5.2.1"
   }
 }
