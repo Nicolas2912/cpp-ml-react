@@ -51,8 +51,8 @@ A full-stack application demonstrating Linear Regression and a basic Feedforward
 
 1.  **Clone the repository**:
     ```powershell
-    git clone <your-repository-url>
-    cd <repository-directory>
+    git clone https://github.com/Nicolas2912/cpp-ml-react.git
+    cd cpp-ml-react
     ```
 
 2.  **Build the C++ executable**:
