@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { vi } from "vitest";
 import App from "./App";
 
-jest.mock("react-chartjs-2", () => {
-  const React = require("react");
+vi.mock("react-chartjs-2", async () => {
+  const React = await import("react");
   const MockChart = React.forwardRef((props, ref) => (
     <div ref={ref} data-testid={props["data-testid"] || "chart-mock"} />
   ));
@@ -17,13 +18,13 @@ class MockWebSocket {
   constructor(url) {
     this.url = url;
     this.readyState = MockWebSocket.OPEN;
-    this.close = jest.fn(() => {
+    this.close = vi.fn(() => {
       this.readyState = MockWebSocket.CLOSED;
       if (this.onclose) {
         this.onclose({ target: this });
       }
     });
-    this.send = jest.fn();
+    this.send = vi.fn();
     this.onopen = null;
     this.onclose = null;
     this.onerror = null;
@@ -42,34 +43,34 @@ let fetchMock;
 beforeAll(() => {
   if (!window.HTMLCanvasElement.prototype.getContext) {
     Object.defineProperty(window.HTMLCanvasElement.prototype, "getContext", {
-      value: jest.fn(() => ({
+      value: vi.fn(() => ({
         canvas: document.createElement("canvas"),
-        fillRect: jest.fn(),
-        clearRect: jest.fn(),
-        getImageData: jest.fn(() => ({ data: [] })),
-        putImageData: jest.fn(),
-        createImageData: jest.fn(() => []),
-        setTransform: jest.fn(),
-        drawImage: jest.fn(),
-        save: jest.fn(),
-        restore: jest.fn(),
-        beginPath: jest.fn(),
-        closePath: jest.fn(),
-        moveTo: jest.fn(),
-        lineTo: jest.fn(),
-        clip: jest.fn(),
-        stroke: jest.fn(),
-        translate: jest.fn(),
-        scale: jest.fn(),
-        rotate: jest.fn(),
-        arc: jest.fn(),
-        fill: jest.fn(),
-        measureText: jest.fn(() => ({ width: 0 })),
-        transform: jest.fn(),
-        rect: jest.fn(),
-        fillText: jest.fn(),
-        strokeText: jest.fn(),
-        createLinearGradient: jest.fn(() => ({ addColorStop: jest.fn() })),
+        fillRect: vi.fn(),
+        clearRect: vi.fn(),
+        getImageData: vi.fn(() => ({ data: [] })),
+        putImageData: vi.fn(),
+        createImageData: vi.fn(() => []),
+        setTransform: vi.fn(),
+        drawImage: vi.fn(),
+        save: vi.fn(),
+        restore: vi.fn(),
+        beginPath: vi.fn(),
+        closePath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        clip: vi.fn(),
+        stroke: vi.fn(),
+        translate: vi.fn(),
+        scale: vi.fn(),
+        rotate: vi.fn(),
+        arc: vi.fn(),
+        fill: vi.fn(),
+        measureText: vi.fn(() => ({ width: 0 })),
+        transform: vi.fn(),
+        rect: vi.fn(),
+        fillText: vi.fn(),
+        strokeText: vi.fn(),
+        createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
       })),
       configurable: true,
     });
@@ -79,12 +80,12 @@ beforeAll(() => {
 beforeEach(() => {
   global.WebSocket = MockWebSocket;
   MockWebSocket.instances = [];
-  fetchMock = jest.fn();
+  fetchMock = vi.fn();
   global.fetch = fetchMock;
 });
 
 afterEach(() => {
-  jest.clearAllMocks();
+  vi.clearAllMocks();
   delete global.fetch;
 });
 
