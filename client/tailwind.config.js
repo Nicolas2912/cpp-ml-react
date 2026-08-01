@@ -4,7 +4,7 @@
 module.exports = {
   content: [
     "./src/**/*.{js,jsx,ts,tsx}", // Ensure this covers your components
-    "./public/index.html",
+    "./index.html",
   ],
   theme: {
     extend: {}, // You can add theme extensions here if needed

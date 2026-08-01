@@ -31,5 +31,4 @@ jobs:
         working-directory: client
         env:
           CI: true
-        run: npm test -- --watchAll=false
-
+        run: npm test
