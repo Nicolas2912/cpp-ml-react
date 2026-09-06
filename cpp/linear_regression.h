@@ -7,7 +7,6 @@
 #include <numeric>   // Required for std::iota
 #include <random>    // Required for std::shuffle, std::mt19937, std::random_device
 #include <algorithm> // Required for std::min, std::shuffle
-#include <omp.h>     // Required for OpenMP
 
 class LinearRegression {
 private:

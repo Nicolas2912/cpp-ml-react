@@ -1,0 +1,12 @@
+node_modules/
+client/build/
+build/
+*.o
+*.exe
+*.gcda
+*.gcno
+*.gcov
+cpp/linear_regression_app
+cpp/*_tests
+*.log
+.DS_Store

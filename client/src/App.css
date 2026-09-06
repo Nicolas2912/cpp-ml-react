@@ -53,8 +53,204 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
 }
 
-[data-theme='dark'] input[type="range"]::-webkit-slider-thumb,
-[data-theme='dark'] input[type="range"]::-moz-range-thumb {
+[data-theme="dark"] input[type="range"]::-webkit-slider-thumb,
+[data-theme="dark"] input[type="range"]::-moz-range-thumb {
   border-color: rgba(15, 23, 42, 0.85);
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.5);
+}
+
+/* Additions follow the original rounded panels, indigo accents and themes. */
+.comparison-card {
+  min-width: 0;
+}
+.comparison-card h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+.comparison-muted {
+  margin-top: 0.8rem;
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: #475569;
+}
+.comparison-tag {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  color: #4f46e5;
+  font-size: 0.75rem;
+}
+.comparison-table-scroll {
+  overflow-x: auto;
+  margin-top: 1.25rem;
+}
+.comparison-card table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.comparison-card th,
+.comparison-card td {
+  padding: 1rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+.comparison-card thead th {
+  font-size: 0.8rem;
+}
+.comparison-card tbody th {
+  font-size: 0.85rem;
+  width: 44%;
+}
+.comparison-card td {
+  font-variant-numeric: tabular-nums;
+}
+.comparison-card small {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 400;
+  margin-top: 0.3rem;
+  color: #64748b;
+}
+.comparison-card .primary-metric {
+  background: #eef2ff;
+}
+.comparison-card .primary-metric td {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.comparison-card .best {
+  color: #047857;
+}
+.comparison-lr {
+  color: #4f46e5;
+}
+.comparison-nn {
+  color: #c2410c;
+}
+.predict-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+.predict-form input {
+  width: 9rem;
+  min-width: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+}
+.predict-form button,
+.blueprint-button {
+  border-radius: 1rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid #c7d2fe;
+  background: #eef2ff;
+  color: #4338ca;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.blueprint-select {
+  padding: 0.35rem 0.65rem;
+  border: 1px solid #a5b4fc;
+  border-radius: 0.65rem;
+  background: white;
+  color: #334155;
+}
+.predict-form button:disabled,
+.blueprint-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.prediction-values {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.prediction-values strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.6rem;
+  font-variant-numeric: tabular-nums;
+}
+.comparison-card .error,
+.comparison-card .notice {
+  padding: 0.8rem 1rem;
+  border-radius: 1rem;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+.comparison-card .error {
+  background: #fff1f2;
+  color: #9f1239;
+}
+.comparison-card .notice {
+  background: #fffbeb;
+  color: #92400e;
+}
+[data-theme="dark"] .comparison-muted,
+[data-theme="dark"] .comparison-card small {
+  color: #94a3b8;
+}
+[data-theme="dark"] .comparison-card th,
+[data-theme="dark"] .comparison-card td {
+  border-color: #334155;
+}
+[data-theme="dark"] .comparison-card .primary-metric {
+  background: #1e293b;
+}
+[data-theme="dark"] .comparison-card .best {
+  color: #34d399;
+}
+[data-theme="dark"] .comparison-lr,
+[data-theme="dark"] .comparison-tag {
+  color: #a5b4fc;
+}
+[data-theme="dark"] .comparison-nn {
+  color: #fb923c;
+}
+[data-theme="dark"] .predict-form input,
+[data-theme="dark"] .blueprint-select {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-color: #475569;
+}
+[data-theme="dark"] .blueprint-button,
+[data-theme="dark"] .predict-form button {
+  background: #312e81;
+  color: #e0e7ff;
+  border-color: #6366f1;
+}
+[data-theme="dark"] .react-flow__controls-button {
+  background: #1e293b;
+  border-color: #475569;
+  fill: #e2e8f0;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #818cf8;
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .comparison-card th,
+  .comparison-card td {
+    padding: 0.7rem 0.3rem;
+  }
+  .comparison-card .primary-metric td {
+    font-size: 1rem;
+  }
+  .comparison-card thead th {
+    font-size: 0.7rem;
+  }
+}
+
+/* Allow the original two-column workspace to shrink cleanly on phones. */
+[data-theme] main .grid > * {
+  min-width: 0;
 }

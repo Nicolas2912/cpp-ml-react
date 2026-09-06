@@ -159,6 +159,29 @@ int main() {
         NeuralNetwork::subtract(a, b);
     });
 
+    {
+        NeuralNetwork original({1, 8, 1}, 0.1);
+        original.train_for_epochs({{0}, {0.5}, {1}}, {{0}, {0.25}, {1}}, 200, 200);
+        std::ostringstream saved;
+        original.save(saved);
+        std::istringstream input(saved.str());
+        NeuralNetwork restored = NeuralNetwork::load(input);
+        for (double x : {-2.0, 0.137, 0.5, 3.0}) {
+            runner.expectNear(restored.predict({x})[0], original.predict({x})[0], 1e-14,
+                              "serialized model reproduces actual inference");
+        }
+    }
+    runner.expectThrows("rejects truncated model", [] {
+        std::istringstream data("3 1 8 1 0.2");
+        NeuralNetwork::load(data);
+    });
+    runner.expectThrows("rejects zero layer", [] { NeuralNetwork nn({1, 0, 1}); });
+    runner.expectThrows("rejects invalid learning rate", [] { NeuralNetwork nn({1, 2, 1}, -1); });
+    runner.expectThrows("rejects invalid epoch count", [] {
+        NeuralNetwork nn({1, 2, 1});
+        nn.train_for_epochs({{0}}, {{0}}, 0);
+    });
+
     if (runner.failed == 0) {
         std::cout << "\nAll " << runner.total << " neural network tests passed." << std::endl;
         return 0;

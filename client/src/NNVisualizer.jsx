@@ -1,125 +1,181 @@
-import React from "react";
+import { useMemo, useState } from "react";
 import ReactFlow, { Controls, Background, Position } from "reactflow";
-
 import "reactflow/dist/style.css";
 
-// Helper function to parse layer string and generate nodes/edges
-const generateFlowElements = (layerString) => {
-  if (!layerString || !/^(\d+-)+\d+$/.test(layerString)) {
-    return { nodes: [], edges: [] }; // Return empty if format is invalid
-  }
+export function parseArchitecture(value) {
+  if (!/^1(?:-[1-9]\d?){0,4}-1$/.test(value)) return null;
+  const layers = value.split("-").map(Number);
+  return layers.some((size) => size > 32) ? null : layers;
+}
 
-  const layerSizes = layerString.split('-').map(Number);
-  const nodes = [];
-  const edges = [];
-  let xOffset = 0;
-  const ySpacing = 80; // Vertical space between nodes in a layer
-  const xSpacing = 150; // Horizontal space between layers
-
-  const layerNodeIds = []; // Store node IDs for each layer to create edges
-
-  layerSizes.forEach((size, layerIndex) => {
-    const currentLayerIds = [];
-    // Calculate vertical offset to center the layer
-    const totalLayerHeight = (size - 1) * ySpacing;
-    const yOffsetStart = -totalLayerHeight / 2;
-
-    for (let i = 0; i < size; i++) {
-      const nodeId = `l${layerIndex}-n${i}`;
-      const yPos = yOffsetStart + i * ySpacing;
-      const isInput = layerIndex === 0;
-      const isOutput = layerIndex === layerSizes.length - 1;
-      let label = `Node ${i}`;
-      let nodeType = 'default'; // Default intermediate node
-
-      if (isInput) {
-        label = `Input ${i}`;
-        nodeType = 'input';
-      } else if (isOutput) {
-        label = `Output ${i}`;
-        nodeType = 'output';
-      }
-
+export function generateFlowElements(layers, selected, isDark) {
+  const nodes = [],
+    edges = [];
+  layers.forEach((size, layer) => {
+    for (let index = 0; index < size; index++) {
+      const id = `l${layer}-n${index}`;
       nodes.push({
-        id: nodeId,
-        data: { label },
-        position: { x: xOffset, y: yPos },
-        type: nodeType,
+        id,
+        data: {
+          label:
+            layer === 0
+              ? "Input"
+              : layer === layers.length - 1
+                ? "Output"
+                : `L${layer} · Neuron ${index + 1}`,
+          layer,
+          index,
+        },
+        position: { x: layer * 180, y: (index - (size - 1) / 2) * 65 },
+        type:
+          layer === 0
+            ? "input"
+            : layer === layers.length - 1
+              ? "output"
+              : "default",
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
-        style: { width: 100, textAlign: 'center' }, // Basic styling
+        selected: selected === id,
+        style: {
+          width: 130,
+          borderRadius: 12,
+          border: `2px solid ${selected === id ? "#a78bfa" : "#818cf8"}`,
+          color: isDark ? "#e2e8f0" : "#334155",
+          background: isDark ? "#1e293b" : "#eef2ff",
+        },
       });
-      currentLayerIds.push(nodeId);
-    }
-
-    layerNodeIds.push(currentLayerIds);
-    xOffset += xSpacing;
-
-    // Create edges from previous layer to current layer
-    if (layerIndex > 0) {
-      const prevLayerIds = layerNodeIds[layerIndex - 1];
-      prevLayerIds.forEach(sourceNodeId => {
-        currentLayerIds.forEach(targetNodeId => {
+      if (layer)
+        for (let previous = 0; previous < layers[layer - 1]; previous++)
           edges.push({
-            id: `e-${sourceNodeId}-${targetNodeId}`,
-            source: sourceNodeId,
-            target: targetNodeId,
-            // type: 'smoothstep', // Optional: change edge type
-            animated: false, // Make edges non-animated by default
+            id: `${layer}-${previous}-${index}`,
+            source: `l${layer - 1}-n${previous}`,
+            target: id,
+            style: { stroke: isDark ? "#64748b" : "#a5b4fc" },
           });
-        });
-      });
     }
   });
-
   return { nodes, edges };
-};
+}
 
-function NNVisualizer({ layerStructure, height = 360 }) {
-  const { nodes, edges } = generateFlowElements(layerStructure);
-
-  // Basic error handling or placeholder if structure is invalid/empty
-  if (nodes.length === 0) {
+export default function NNVisualizer({
+  layerStructure,
+  onChange,
+  disabled = false,
+  isDark = false,
+  height = 420,
+}) {
+  const [selection, setSelection] = useState(null);
+  const layers = useMemo(
+    () => parseArchitecture(layerStructure),
+    [layerStructure],
+  );
+  const selected =
+    selection?.architecture === layerStructure ? selection : null;
+  const { nodes, edges } = useMemo(
+    () =>
+      layers
+        ? generateFlowElements(layers, selected?.id, isDark)
+        : { nodes: [], edges: [] },
+    [layers, selected, isDark],
+  );
+  const update = (values) => {
+    setSelection(null);
+    onChange?.(values.join("-"));
+  };
+  if (!layers)
     return (
-      <div
-        style={{
-          height: typeof height === "number" ? `${height}px` : height,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "grey",
-          width: "100%",
-        }}
-      >
-        <p>Enter a valid layer structure (e.g., 1-4-1) to visualize.</p>
-      </div>
+      <p role="status" className="p-4 text-sm">
+        Enter a valid architecture: one input, one output, and up to four hidden
+        layers of 1–32 neurons (for example 1-4-1).
+      </p>
     );
-  }
-
   return (
-    // Set explicit height for the container
-    <div
-      style={{
-        height: typeof height === "number" ? `${height}px` : height,
-        width: "100%",
-        border: "1px solid #ccc",
-        borderRadius: "8px",
-      }}
-    >
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodesDraggable={false} // Disable dragging for simplicity
-        nodesConnectable={false} // Disable connecting
-        fitView // Zoom/pan to fit all nodes
-        fitViewOptions={{ padding: 0.2 }} // Add some padding on fitView
+    <div className="space-y-4" aria-label="Neural network architecture builder">
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <span className="rounded-full border border-indigo-400/40 px-3 py-1">
+          {layers.reduce((a, b) => a + b, 0)} neurons · {edges.length}{" "}
+          connections
+        </span>
+        <span className="font-mono">{layerStructure}</span>
+        <button
+          type="button"
+          className="blueprint-button"
+          disabled={disabled || layers.length >= 6}
+          onClick={() => update([...layers.slice(0, -1), 4, 1])}
+        >
+          Add hidden layer
+        </button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {layers.slice(1, -1).map((size, i) => (
+          <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
+            <label htmlFor={`hidden-${i}`}>Hidden layer {i + 1} neurons</label>
+            <select
+              id={`hidden-${i}`}
+              className="blueprint-select"
+              value={size}
+              disabled={disabled}
+              onChange={(event) => {
+                const next = [...layers];
+                next[i + 1] = Number(event.target.value);
+                update(next);
+              }}
+            >
+              {Array.from({ length: 32 }, (_, j) => (
+                <option key={j} value={j + 1}>
+                  {j + 1}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="blueprint-button"
+              aria-label={`Remove hidden layer ${i + 1}`}
+              disabled={disabled}
+              onClick={() =>
+                update(layers.filter((_, index) => index !== i + 1))
+              }
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs opacity-80" role="status">
+        {selected
+          ? `${selected.label} selected. ${selected.layer === 0 || selected.layer === layers.length - 1 ? "Input and output stay at one neuron for X-to-Y regression." : `Edit hidden layer ${selected.layer} above to change its neurons.`}`
+          : "Select a neuron to inspect its layer. Pan, zoom, or use fit view to explore the network."}
+      </p>
+      <div
+        style={{ height }}
+        className="overflow-hidden rounded-2xl border border-indigo-400/30"
       >
-        <Controls showInteractive={false} />
-        {/* <MiniMap nodeStrokeWidth={3} zoomable pannable /> */}
-        <Background variant="dots" gap={12} size={1} />
-      </ReactFlow>
+        <ReactFlow
+          key={layerStructure}
+          nodes={nodes}
+          edges={edges}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          fitView
+          fitViewOptions={{ padding: 0.25 }}
+          onNodeClick={(_, node) =>
+            setSelection({
+              architecture: layerStructure,
+              id: node.id,
+              layer: node.data.layer,
+              label: node.data.label,
+            })
+          }
+        >
+          <Controls showInteractive={false} />
+          <Background
+            variant="dots"
+            gap={16}
+            size={1}
+            color={isDark ? "#475569" : "#cbd5e1"}
+          />
+        </ReactFlow>
+      </div>
     </div>
   );
 }
-
-export default NNVisualizer; 

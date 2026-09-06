@@ -136,6 +136,12 @@ int main() {
                           "printUsage prints usage header");
     }
 
+    runner.expectThrows("rejects missing numeric token", [] { parseVector("1,,2"); });
+    runner.expectThrows("rejects trailing delimiter", [] { parseVector("1,2,"); });
+    runner.expectThrows("rejects non-finite input", [] { parseVector("1,nan"); });
+    runner.expectThrows("rejects missing layer", [] { parseLayerSizes("1--8-1"); });
+    runner.expectThrows("rejects oversized layers", [] { parseLayerSizes("1-100-1"); });
+
     if (runner.failed == 0) {
         std::cout << "\nAll " << runner.total << " CLI helper tests passed." << std::endl;
         return 0;

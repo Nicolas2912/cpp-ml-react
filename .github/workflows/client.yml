@@ -16,10 +16,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Use Node.js 20
+      - name: Use Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: client/package-lock.json
 
@@ -32,3 +32,7 @@ jobs:
         env:
           CI: true
         run: npm test
+
+      - name: Production build
+        working-directory: client
+        run: npm run build

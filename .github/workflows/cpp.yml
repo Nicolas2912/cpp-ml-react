@@ -26,5 +26,5 @@ jobs:
         run: make -C cpp tests
 
       - name: Run C++ tests
-        run: make -C cpp test_all
+        run: OMP_NUM_THREADS=1 make -C cpp test_all
 

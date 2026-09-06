@@ -15,7 +15,7 @@ class NeuralNetwork {
 public:
     // Constructor: specifies the number of neurons in each layer (including input and output)
     // Example: {2, 3, 1} means 2 input neurons, 3 hidden neurons, 1 output neuron
-    NeuralNetwork(const std::vector<size_t>& layer_sizes, double learning_rate = 0.01);
+    NeuralNetwork(const std::vector<size_t>& layer_sizes, double learning_rate = 0.01, unsigned seed = 42);
 
     // Predict the output for a given input vector
     Vector predict(const Vector& input);
@@ -30,6 +30,9 @@ public:
         int epochs,
         int report_every_n_epochs = 10 // Report every 10 epochs by default
     );
+
+    void save(std::ostream& out) const;
+    static NeuralNetwork load(std::istream& in);
 
     // --- Activation Functions ---
     // Sigmoid activation function
@@ -52,6 +55,7 @@ private:
 
     // --- Training Parameters ---
     double learning_rate_;
+    std::mt19937 generator_;
 
     // --- Internal State (for backpropagation) ---
     std::vector<Vector> layer_outputs_; // Stores outputs of each layer during forward pass (including input)
