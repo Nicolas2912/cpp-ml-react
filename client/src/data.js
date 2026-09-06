@@ -27,8 +27,8 @@ export function parseData(text) {
   };
   const x = parse(text.x),
     y = parse(text.y);
-  if (x.length < 10 || x.length > 1000 || x.length !== y.length)
-    throw new Error("Enter 10 to 1,000 matching X and Y values.");
+  if (x.length < 2 || x.length > 1000 || x.length !== y.length)
+    throw new Error("Enter 2 to 1,000 matching X and Y values.");
   if (
     [...x, ...y].some(
       (value) => !Number.isFinite(value) || Math.abs(value) > 1e6,

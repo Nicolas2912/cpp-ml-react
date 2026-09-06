@@ -1,14 +1,20 @@
 import { format } from "../data";
 
-export default function Results({ result }) {
-  const { lr, nn } = result;
-  const difference = lr.test.mse - nn.test.mse;
+export default function Results({ result, className = "" }) {
+  const { lr, nn, split } = result;
+  const comparable = lr?.test.mse != null && nn?.test.mse != null;
+  const difference = comparable ? lr.test.mse - nn.test.mse : 0;
   const tied =
+    comparable &&
     Math.abs(difference) <=
-    Math.max(1e-10, Math.max(lr.test.mse, nn.test.mse) * 0.001);
-  const winner = tied ? null : difference > 0 ? "nn" : "lr";
+      Math.max(1e-10, Math.max(lr.test.mse, nn.test.mse) * 0.001);
+  const winner = comparable && !tied ? (difference > 0 ? "nn" : "lr") : null;
   const rows = [
-    ["Test MSE", "Lower is better", (model) => format(model.test.mse)],
+    [
+      "Test MSE",
+      "Lower is better · original Y units²",
+      (model) => format(model.test.mse),
+    ],
     [
       "Training MSE",
       "Fit on the points used to learn",
@@ -26,24 +32,33 @@ export default function Results({ result }) {
     ],
   ];
   return (
-    <section className="panel results" aria-labelledby="results-title">
-      <div className="section-heading">
-        <h2 id="results-title">Compare the results</h2>
-        <span className="tag">Same test points</span>
+    <section
+      className={`comparison-card ${className}`}
+      aria-labelledby="results-title"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2
+          id="results-title"
+          className="text-2xl font-semibold tracking-tight"
+        >
+          Compare the results
+        </h2>
+        <span className="comparison-tag">Same dataset · same split</span>
       </div>
-      <p className="muted">
-        Both models learned from {result.split.train.length} points. These
-        scores use {result.split.test.length} held-out points.
+      <p className="comparison-muted">
+        {split.test.length
+          ? `${split.train.length} training points · ${split.test.length} held-out test points. Both models use the same split.`
+          : "Training-only run. Add at least 5 points to get held-out test scores."}
       </p>
-      <div className="table-scroll">
+      <div className="comparison-table-scroll">
         <table>
           <thead>
             <tr>
               <th scope="col">Metric</th>
-              <th scope="col" className="lr">
+              <th scope="col" className="comparison-lr">
                 Linear regression
               </th>
-              <th scope="col" className="nn">
+              <th scope="col" className="comparison-nn">
                 Neural network
               </th>
             </tr>
@@ -56,25 +71,33 @@ export default function Results({ result }) {
                   <small>{hint}</small>
                 </th>
                 <td className={index === 0 && winner === "lr" ? "best" : ""}>
-                  {get(lr)}
+                  {lr ? get(lr) : "Not trained"}
                 </td>
                 <td className={index === 0 && winner === "nn" ? "best" : ""}>
-                  {get(nn)}
+                  {nn ? get(nn) : "Not trained"}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="result-note">
-        {tied
-          ? "The models have similar test error on this split."
-          : `${winner === "lr" ? "Linear regression" : "The neural network"} has lower test error on this split.`}{" "}
+      <p className="comparison-muted">
+        {!lr || !nn
+          ? "Train the other model or choose Compare both models to complete the comparison."
+          : !comparable
+            ? "Test scores need held-out data."
+            : tied
+              ? "The models have similar test error on this split."
+              : `${winner === "lr" ? "Linear regression" : "The neural network"} has lower test error on this split.`}{" "}
         MSE is measured in original Y units squared.
       </p>
-      {(lr.test.r2 === null || nn.test.r2 === null) && (
-        <p className="muted">R² is undefined when every test Y is equal.</p>
-      )}
+      {split.test.length > 0 &&
+        (lr?.test.r2 === null || nn?.test.r2 === null) && (
+          <p className="comparison-muted">
+            R² is undefined with fewer than two test points or constant test
+            targets. More data gives a more useful comparison.
+          </p>
+        )}
     </section>
   );
 }

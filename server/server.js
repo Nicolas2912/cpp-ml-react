@@ -58,11 +58,9 @@ function createServer(options = {}) {
     app.use("/api", (req, res, next) => {
         const token = req.headers.authorization?.replace(/^Bearer /, "");
         if (!sessions.has(token))
-            return res
-                .status(401)
-                .json({
-                    error: "Connection expired. Reconnect and train again.",
-                });
+            return res.status(401).json({
+                error: "Connection expired. Reconnect and train again.",
+            });
         req.owner = token;
         next();
     });
@@ -99,23 +97,26 @@ function createServer(options = {}) {
     });
     app.post("/api/jobs/:id/predict", async (req, res) => {
         const x = req.body?.x;
+        const model = req.body?.model;
+        if (model !== undefined && !["lr", "nn", "both"].includes(model))
+            return res
+                .status(400)
+                .json({ error: "Choose lr, nn, or both models." });
         if (
             typeof x !== "number" ||
             !Number.isFinite(x) ||
             Math.abs(x) > LIMITS.magnitude
         ) {
-            return res
-                .status(400)
-                .json({
-                    error: "Enter a finite X between −1,000,000 and 1,000,000.",
-                });
+            return res.status(400).json({
+                error: "Enter a finite X between −1,000,000 and 1,000,000.",
+            });
         }
         if (req.job.status !== "completed" || req.job.predicting)
             return res
                 .status(409)
                 .json({ error: "Wait for the current operation to finish." });
         try {
-            res.json(await jobs.predict(req.job, x));
+            res.json(await jobs.predict(req.job, x, model));
         } catch (error) {
             res.status(500).json({ error: error.message });
         }

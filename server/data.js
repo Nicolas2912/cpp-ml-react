@@ -9,6 +9,7 @@ function validateDataset(body) {
     const {
         x,
         y,
+        model = "both",
         layers = "1-8-1",
         learningRate = 0.3,
         epochs = 3000,
@@ -16,11 +17,11 @@ function validateDataset(body) {
     if (
         !Array.isArray(x) ||
         !Array.isArray(y) ||
-        x.length < 10 ||
+        x.length < 2 ||
         x.length > LIMITS.points ||
         x.length !== y.length
     ) {
-        throw new Error("Enter 10 to 1,000 matching X and Y values.");
+        throw new Error("Enter 2 to 1,000 matching X and Y values.");
     }
     if (
         [...x, ...y].some(
@@ -32,8 +33,11 @@ function validateDataset(body) {
     ) {
         throw new Error("Use finite numbers between −1,000,000 and 1,000,000.");
     }
+    if (!["lr", "nn", "both"].includes(model))
+        throw new Error("Choose lr, nn, or both models.");
     if (new Set(x).size < 2)
         throw new Error("Use at least two distinct X values.");
+    if (model === "lr") return { x: [...x], y: [...y], model };
     if (
         typeof layers !== "string" ||
         layers.length > 24 ||
@@ -63,7 +67,7 @@ function validateDataset(body) {
         throw new Error(
             "This run is too large. Reduce points, neurons, or epochs.",
         );
-    return { x: [...x], y: [...y], layers, learningRate, epochs };
+    return { x: [...x], y: [...y], layers, learningRate, epochs, model };
 }
 
 function splitData(x, y) {
@@ -75,7 +79,8 @@ function splitData(x, y) {
         const j = Math.floor((seed / 4294967296) * (i + 1));
         [indices[i], indices[j]] = [indices[j], indices[i]];
     }
-    const testCount = Math.max(2, Math.round(x.length * 0.2));
+    const testCount =
+        x.length < 5 ? 0 : Math.max(1, Math.round(x.length * 0.2));
     const points = indices.map((index) => ({
         x: x[index],
         y: y[index],
@@ -98,6 +103,7 @@ function metrics(points, predictions) {
     ) {
         throw new Error("The engine returned invalid predictions.");
     }
+    if (points.length === 0) return { mse: null, r2: null };
     const mean =
         points.reduce((sum, point) => sum + point.y, 0) / points.length;
     const sse = points.reduce(

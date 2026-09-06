@@ -35,7 +35,18 @@ class Jobs {
         if (all.some((job) => job.owner === owner && job.status === "running"))
             throw new Error("Finish or cancel your current run first.");
         const previous = all.filter((job) => job.owner === owner);
-        if (previous.length >= 3) this.jobs.delete(previous[0].id);
+        if (previous.length >= 3) {
+            // Keep the latest independently trained LR and NN when evicting history.
+            const latest = [...previous].reverse();
+            const keep = new Set([
+                latest.find((item) => item.result?.lr)?.id,
+                latest.find((item) => item.result?.nn)?.id,
+            ]);
+            const evicted =
+                previous.find((item) => !keep.has(item.id)) || previous[0];
+            evicted.controller.abort();
+            this.jobs.delete(evicted.id);
+        }
         if (this.jobs.size >= 64)
             throw new Error("The server is full. Try again later.");
         const job = {
@@ -71,7 +82,7 @@ class Jobs {
     }
 
     async train(job) {
-        const { x, y, layers, learningRate, epochs } = job.data;
+        const { x, y, layers, learningRate, epochs, model = "both" } = job.data;
         const split = splitData(x, y);
         const trainX = split.train.map((point) => point.x);
         const trainY = split.train.map((point) => point.y);
@@ -86,92 +97,99 @@ class Jobs {
         const evaluationX = [...split.test.map((point) => point.x), ...gridX];
         const opts = { ...this.options, signal: job.controller.signal };
         try {
-            const lr = await runEngine(
-                ["lr_train"],
-                `${trainX}\n${trainY}\n`,
-                opts,
-            );
-            const [slope] = numbers(lr.slope, 1),
-                [intercept] = numbers(lr.intercept, 1);
-            const lrPredict = (values) =>
-                values.map((value) => slope * value + intercept);
-            const nn = await runEngine(
-                [
-                    "nn_train_predict",
-                    layers,
-                    String(learningRate),
-                    String(epochs),
-                ],
-                `${trainX.map((value) => scale(value, sx))}\n${trainY.map((value) => scale(value, sy))}\n${evaluationX.map((value) => scale(value, sx))}\n`,
-                {
-                    ...opts,
-                    onLoss: (point) => {
-                        if (job.status !== "running") return;
-                        const original = {
-                            epoch: point.epoch,
-                            mse: point.mse * sy.range ** 2,
-                        };
-                        if (!Number.isFinite(original.mse))
-                            throw new Error(
-                                "Training diverged. Lower the learning rate.",
-                            );
-                        job.loss.push(original);
-                        job.notify({
-                            type: "progress",
-                            id: job.id,
-                            ...original,
-                        });
-                    },
-                },
-            );
-            if (job.controller.signal.aborted)
-                throw new Error("Training cancelled.");
-            const trainPredictions = numbers(
-                nn.nn_predictions,
-                trainX.length,
-            ).map((value) => unscale(value, sy));
-            const evaluationPredictions = numbers(
-                nn.eval_predictions,
-                evaluationX.length,
-            ).map((value) => unscale(value, sy));
-            if (
-                !nn.model ||
-                evaluationPredictions.some((value) => !Number.isFinite(value))
-            )
-                throw new Error("The engine returned invalid model data.");
-            job.model = { slope, intercept, serialized: nn.model, sx, sy };
-            const [lrTime] = numbers(lr.training_time_ms, 1),
-                [nnTime] = numbers(nn.training_time_ms, 1);
+            job.model = { sx, sy };
             job.result = {
                 split,
-                settings: { layers, learningRate, epochs, seed: 42 },
-                lr: {
-                    train: metrics(split.train, lrPredict(trainX)),
+                settings: { layers, learningRate, epochs, seed: 42, model },
+                lr: null,
+                nn: null,
+            };
+            if (model !== "nn") {
+                const lr = await runEngine(
+                    ["lr_train"],
+                    `${trainX}\n${trainY}\n`,
+                    opts,
+                );
+                const [slope] = numbers(lr.slope, 1),
+                    [intercept] = numbers(lr.intercept, 1);
+                const predict = (values) =>
+                    values.map((value) => slope * value + intercept);
+                job.model.slope = slope;
+                job.model.intercept = intercept;
+                job.result.lr = {
+                    train: metrics(split.train, predict(trainX)),
                     test: metrics(
                         split.test,
-                        lrPredict(split.test.map((p) => p.x)),
+                        predict(split.test.map((p) => p.x)),
                     ),
-                    timeMs: lrTime,
+                    timeMs: numbers(lr.training_time_ms, 1)[0],
                     slope,
                     intercept,
                     curve: gridX.map((value) => ({
                         x: value,
                         y: slope * value + intercept,
                     })),
-                },
-                nn: {
+                };
+            }
+            if (model !== "lr") {
+                const nn = await runEngine(
+                    [
+                        "nn_train_predict",
+                        layers,
+                        String(learningRate),
+                        String(epochs),
+                    ],
+                    `${trainX.map((value) => scale(value, sx))}\n${trainY.map((value) => scale(value, sy))}\n${evaluationX.map((value) => scale(value, sx))}\n`,
+                    {
+                        ...opts,
+                        onLoss: (point) => {
+                            if (job.status !== "running") return;
+                            const original = {
+                                epoch: point.epoch,
+                                mse: point.mse * sy.range ** 2,
+                            };
+                            if (!Number.isFinite(original.mse))
+                                throw new Error(
+                                    "Training diverged. Lower the learning rate.",
+                                );
+                            job.loss.push(original);
+                            job.notify({
+                                type: "progress",
+                                id: job.id,
+                                ...original,
+                            });
+                        },
+                    },
+                );
+                const trainPredictions = numbers(
+                    nn.nn_predictions,
+                    trainX.length,
+                ).map((value) => unscale(value, sy));
+                const predictions = numbers(
+                    nn.eval_predictions,
+                    evaluationX.length,
+                ).map((value) => unscale(value, sy));
+                if (
+                    !nn.model ||
+                    predictions.some((value) => !Number.isFinite(value))
+                )
+                    throw new Error("The engine returned invalid model data.");
+                job.model.serialized = nn.model;
+                job.result.nn = {
                     train: metrics(split.train, trainPredictions),
                     test: metrics(
                         split.test,
-                        evaluationPredictions.slice(0, split.test.length),
+                        predictions.slice(0, split.test.length),
                     ),
-                    timeMs: nnTime,
+                    timeMs: numbers(nn.training_time_ms, 1)[0],
                     curve: gridX.map((value, i) => ({
                         x: value,
-                        y: evaluationPredictions[split.test.length + i],
+                        y: predictions[split.test.length + i],
                     })),
-                },
-            };
+                };
+            }
+            if (job.controller.signal.aborted)
+                throw new Error("Training cancelled.");
             job.status = "completed";
             job.notify({ type: "completed", ...this.snapshot(job) });
         } catch (error) {
@@ -199,7 +217,7 @@ class Jobs {
         }
     }
 
-    async predict(job, x) {
+    async predict(job, x, model) {
         if (job.status !== "completed")
             throw new Error("Complete training before predicting.");
         if (job.predicting) throw new Error("A prediction is already running.");
@@ -214,29 +232,36 @@ class Jobs {
         try {
             const { slope, intercept, serialized, sx, sy } = job.model;
             const opts = { ...this.options, signal: job.controller.signal };
-            const lr = await runEngine(
-                ["lr_predict", String(slope), String(intercept), String(x)],
-                "",
-                opts,
-            );
-            const nn = await runEngine(
-                ["nn_predict"],
-                `${serialized}\n${scale(x, sx)}\n`,
-                opts,
-            );
-            const [lrValue] = numbers(lr.predictions, 1),
-                [nnValue] = numbers(nn.predictions, 1);
             const prediction = {
                 x,
-                lr: lrValue,
-                nn: unscale(nnValue, sy),
                 extrapolation:
                     x < Math.min(...job.data.x) || x > Math.max(...job.data.x),
             };
-            if (!Number.isFinite(prediction.nn))
-                throw new Error(
-                    "Prediction is outside the model's numeric range.",
+            const selected = model || job.data.model || "both";
+            if (selected !== "nn") {
+                if (!job.result.lr)
+                    throw new Error("This run has no trained linear model.");
+                const lr = await runEngine(
+                    ["lr_predict", String(slope), String(intercept), String(x)],
+                    "",
+                    opts,
                 );
+                prediction.lr = numbers(lr.predictions, 1)[0];
+            }
+            if (selected !== "lr") {
+                if (!job.result.nn)
+                    throw new Error("This run has no trained neural model.");
+                const nn = await runEngine(
+                    ["nn_predict"],
+                    `${serialized}\n${scale(x, sx)}\n`,
+                    opts,
+                );
+                prediction.nn = unscale(numbers(nn.predictions, 1)[0], sy);
+                if (!Number.isFinite(prediction.nn))
+                    throw new Error(
+                        "Prediction is outside the model's numeric range.",
+                    );
+            }
             return prediction;
         } finally {
             job.predicting = false;

@@ -209,3 +209,71 @@ test("constant targets return finite MSE and undefined R²", async (t) => {
     assert.equal(state.result.lr.test.mse, 0);
     assert.ok(Number.isFinite(state.result.nn.test.mse));
 });
+
+test("restored independent LR and NN workflows retain both models", async (t) => {
+    const app = await setup(t);
+    const owner = await app.connect();
+    const lrCreated = await owner.request("/jobs", {
+        ...data,
+        model: "lr",
+        layers: "invalid",
+        epochs: -1,
+    });
+    const lr = await waitFor(owner, lrCreated.body.id);
+    assert.ok(lr.result.lr);
+    assert.equal(lr.result.nn, null);
+    assert.equal(lr.loss.length, 0);
+    let nn;
+    for (let i = 0; i < 4; i++) {
+        const created = await owner.request("/jobs", {
+            ...data,
+            model: "nn",
+            layers: "1-6-4-1",
+            epochs: 100,
+        });
+        nn = await waitFor(owner, created.body.id);
+        assert.equal(nn.result.lr, null);
+        assert.ok(nn.result.nn);
+        assert.equal(nn.result.settings.layers, "1-6-4-1");
+    }
+    assert.deepEqual(lr.result.split, nn.result.split);
+    assert.equal(
+        (
+            await owner.request(`/jobs/${lr.id}/predict`, {
+                x: 0.137,
+                model: "lr",
+            })
+        ).status,
+        200,
+    );
+    const prediction = await owner.request(`/jobs/${nn.id}/predict`, {
+        x: 0.137,
+        model: "nn",
+    });
+    assert.equal(prediction.status, 200);
+    assert.ok(Number.isFinite(prediction.body.nn));
+    assert.equal(prediction.body.lr, undefined);
+    assert.equal(
+        (await owner.request("/jobs", { ...data, model: "invalid" })).status,
+        400,
+    );
+});
+
+test("original two-point and five-point datasets remain supported with honest test scores", async (t) => {
+    const app = await setup(t);
+    const owner = await app.connect();
+    for (const n of [2, 5]) {
+        const created = await owner.request("/jobs", {
+            x: [1, 2, 3, 4, 5].slice(0, n),
+            y: [2, 4, 6, 8, 10].slice(0, n),
+            epochs: 100,
+        });
+        assert.equal(created.status, 202);
+        const state = await waitFor(owner, created.body.id);
+        assert.equal(state.result.split.test.length, n === 2 ? 0 : 1);
+        assert.equal(state.result.lr.test.r2, null);
+        assert.equal(state.result.nn.test.r2, null);
+        if (n === 2) assert.equal(state.result.lr.test.mse, null);
+        else assert.equal(state.result.lr.test.mse, 0);
+    }
+});

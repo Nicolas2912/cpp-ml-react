@@ -134,9 +134,12 @@ export default function useComparison() {
     version.current++;
     setRun(empty);
   };
-  const predict = async (x) => {
+  const predict = async (x, id = active.current, model) => {
     const revision = version.current;
-    const prediction = await request(`/jobs/${active.current}/predict`, { x });
+    const prediction = await request(`/jobs/${id}/predict`, {
+      x,
+      ...(model ? { model } : {}),
+    });
     if (revision !== version.current)
       throw new Error("The dataset changed. Train again before predicting.");
     return prediction;

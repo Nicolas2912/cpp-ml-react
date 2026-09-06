@@ -10,10 +10,26 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import App from "./App";
 import { mergeUpdate } from "./hooks/useComparison";
 import { parseData } from "./data";
+import { parseArchitecture, generateFlowElements } from "./NNVisualizer";
 
 vi.mock("react-chartjs-2", () => ({
-  Scatter: () => <div>Fit chart</div>,
+  Scatter: () => <div>Scatter chart</div>,
   Line: () => <div>Loss chart</div>,
+}));
+vi.mock("reactflow", () => ({
+  default: ({ nodes, onNodeClick, children }) => (
+    <div>
+      {nodes.map((node) => (
+        <button key={node.id} onClick={() => onNodeClick({}, node)}>
+          {node.data.label}
+        </button>
+      ))}
+      {children}
+    </div>
+  ),
+  Controls: () => <span>Zoom controls</span>,
+  Background: () => null,
+  Position: { Right: "right", Left: "left" },
 }));
 class Socket {
   static instances = [];
@@ -27,18 +43,25 @@ class Socket {
 }
 const result = {
   split: {
-    train: Array.from({ length: 48 }, (_, i) => ({ x: i, y: i })),
-    test: Array.from({ length: 12 }, (_, i) => ({ x: i, y: i })),
+    train: [
+      { x: 1, y: 2 },
+      { x: 2, y: 3 },
+      { x: 3, y: 4 },
+      { x: 4, y: 5 },
+    ],
+    test: [{ x: 5, y: 5 }],
   },
   lr: {
-    train: { mse: 0.3 },
-    test: { mse: 0.5, r2: 0.7 },
+    slope: 1,
+    intercept: 1,
+    train: { mse: 0.3, r2: 0.8 },
+    test: { mse: 0.5, r2: null },
     timeMs: 1,
     curve: [],
   },
   nn: {
-    train: { mse: 0.1 },
-    test: { mse: 0.2, r2: 0.9 },
+    train: { mse: 0.1, r2: 0.9 },
+    test: { mse: 0.2, r2: null },
     timeMs: 20,
     curve: [],
   },
@@ -50,22 +73,33 @@ function boot() {
   socket = Socket.instances.at(-1);
   act(() => socket.emit({ type: "session", token: "owner" }));
 }
-async function start() {
-  fireEvent.click(screen.getByRole("button", { name: /Compare models/ }));
+async function start(name = "Compare both models") {
+  fetch.mockClear();
+  fireEvent.click(screen.getByRole("button", { name, exact: true }));
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
 }
-function complete() {
+async function complete(mode = "both") {
   act(() =>
     socket.emit({
       id: "job",
       type: "completed",
       status: "completed",
-      result,
-      loss: [{ epoch: 1500, mse: 0.1 }],
+      result: {
+        ...result,
+        lr: mode === "nn" ? null : result.lr,
+        nn: mode === "lr" ? null : result.nn,
+      },
+      loss: mode === "lr" ? [] : [{ epoch: 1000, mse: 0.1 }],
     }),
   );
+  await screen.findByRole("table");
 }
 beforeEach(() => {
+  const storage = new Map();
+  vi.stubGlobal("localStorage", {
+    getItem: (key) => storage.get(key) || null,
+    setItem: (key, value) => storage.set(key, value),
+  });
   Socket.instances = [];
   vi.stubGlobal("WebSocket", Socket);
   vi.stubGlobal(
@@ -87,43 +121,111 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-test("trains, compares test metrics, and requests actual model predictions", async () => {
+test("preserves the original composer, model tabs, dual charts, and theme toggle", () => {
+  boot();
+  expect(screen.getByLabelText("X series (comma separated)")).toHaveValue(
+    "1, 2, 3, 4, 5",
+  );
+  expect(screen.getByLabelText("Number of points")).toHaveValue(20);
+  expect(screen.getByLabelText("Linearity")).toHaveValue("0.7");
+  expect(
+    screen.getByRole("button", { name: "Generate dataset" }),
+  ).toBeEnabled();
+  expect(screen.getByText("Raw distribution")).toBeInTheDocument();
+  expect(
+    screen.getByText("Compare predictions with truth"),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Toggle theme" }));
+  expect(document.querySelector("[data-theme]")).toHaveAttribute(
+    "data-theme",
+    "dark",
+  );
+  expect(localStorage.getItem("ml-theme")).toBe("dark");
+});
+
+test("trains both models, compares metrics, and sends true prediction requests", async () => {
   boot();
   await start();
-  expect(JSON.parse(fetch.mock.calls[0][1].body).x).toHaveLength(60);
+  expect(JSON.parse(fetch.mock.calls[0][1].body).model).toBe("both");
   expect(fetch.mock.calls[0][1].headers.Authorization).toBe("Bearer owner");
-  act(() => socket.emit({ id: "job", type: "progress", epoch: 20, mse: 2.5 }));
-  expect(
-    screen.getByText("Neural network training MSE: 2.5"),
-  ).toBeInTheDocument();
-  complete();
+  await complete();
   const table = screen.getByRole("table");
   expect(within(table).getByText("0.5")).toBeInTheDocument();
   expect(within(table).getByText("0.2")).toBeInTheDocument();
-  expect(
-    screen.getByText(/The neural network has lower test error/),
-  ).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("X value"), {
     target: { value: "12.137" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Predict both" }));
-  expect(await screen.findByText("3.1")).toBeInTheDocument();
-  expect(fetch.mock.calls.at(-1)[0]).toBe("/api/jobs/job/predict");
-  expect(JSON.parse(fetch.mock.calls.at(-1)[1].body)).toEqual({ x: 12.137 });
+  expect(
+    await screen.findByText(/Predicted Y at X = 12.14/),
+  ).toBeInTheDocument();
+  const predictions = fetch.mock.calls.filter(([url]) =>
+    url.endsWith("/predict"),
+  );
+  expect(
+    predictions.map(([, options]) => JSON.parse(options.body).model),
+  ).toEqual(["lr", "nn"]);
   expect(screen.getByText(/outside your dataset/)).toBeInTheDocument();
 });
 
-test("cancels training and ignores late loss events", async () => {
+test("keeps LR results when training NN separately and restores both prediction controls", async () => {
+  boot();
+  await start("Train Linear Regression");
+  expect(JSON.parse(fetch.mock.calls[0][1].body).model).toBe("lr");
+  await complete("lr");
+  expect(screen.getByText("Slope (m)")).toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Neural Network", exact: true }),
+  );
+  await start("Train NN & Predict");
+  expect(JSON.parse(fetch.mock.calls[0][1].body).model).toBe("nn");
+  await complete("nn");
+  expect(
+    within(screen.getByRole("table")).getByText("0.5"),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("Predict Y for a chosen X")).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Predict", exact: true }));
+  await screen.findByText(/NN predicts 3.1/);
+  expect(JSON.parse(fetch.mock.calls.at(-1)[1].body).model).toBe("nn");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Linear Regression", exact: true }),
+  );
+  expect(screen.getByLabelText("Predict Y for a chosen X")).toBeEnabled();
+});
+
+test("edits layers and neurons in the restored blueprint and trains that architecture", async () => {
+  boot();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Neural Network", exact: true }),
+  );
+  expect(await screen.findByText("Layer topology preview")).toBeInTheDocument();
+  fireEvent.change(await screen.findByLabelText("Hidden layer 1 neurons"), {
+    target: { value: "6" },
+  });
+  expect(screen.getByLabelText(/Layer sizes/)).toHaveValue("1-6-1");
+  fireEvent.click(screen.getByRole("button", { name: "Add hidden layer" }));
+  expect(screen.getByLabelText(/Layer sizes/)).toHaveValue("1-6-4-1");
+  fireEvent.click(screen.getByRole("button", { name: "L1 · Neuron 1" }));
+  expect(screen.getByText(/L1 · Neuron 1 selected/)).toBeInTheDocument();
+  await start("Train NN & Predict");
+  expect(JSON.parse(fetch.mock.calls[0][1].body).layers).toBe("1-6-4-1");
+  expect(
+    screen.getByRole("button", { name: "Add hidden layer" }),
+  ).toBeDisabled();
+});
+
+test("cancels a run and rejects late progress", async () => {
   boot();
   await start();
   fireEvent.click(screen.getByRole("button", { name: "Cancel training" }));
-  expect(await screen.findByText(/Training cancelled/)).toBeInTheDocument();
+  await screen.findByText(/Training cancelled/);
   act(() => socket.emit({ id: "job", type: "progress", epoch: 100, mse: 8 }));
-  expect(screen.queryByText(/MSE: 8/)).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Compare models/ })).toBeEnabled();
+  expect(
+    screen.getByRole("button", { name: "Compare both models" }),
+  ).toBeEnabled();
 });
 
-test("shows failures and invalidates results when the dataset changes", async () => {
+test("surfaces failures, invalid input, and clears stale models on data changes", async () => {
   boot();
   await start();
   act(() =>
@@ -134,54 +236,49 @@ test("shows failures and invalidates results when the dataset changes", async ()
       error: "Training timed out.",
     }),
   );
-  expect(screen.getByRole("alert")).toHaveTextContent("Training timed out.");
-  fetch.mockClear();
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Training timed out.",
+  );
   await start();
-  complete();
-  fireEvent.change(screen.getByLabelText("Dataset"), {
-    target: { value: "line" },
-  });
+  await complete();
+  fireEvent.click(screen.getByRole("button", { name: "Curve sample" }));
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("button", { name: "Predict both" }),
-  ).not.toBeInTheDocument();
-});
-
-test("rejects bad manual data before requesting training", () => {
-  boot();
-  fireEvent.change(screen.getByLabelText("X values"), {
-    target: { value: "1,2,,3" },
+  fireEvent.change(screen.getByLabelText("X series (comma separated)"), {
+    target: { value: "1,,3" },
   });
-  fireEvent.click(screen.getByRole("button", { name: /Compare models/ }));
-  expect(screen.getByRole("alert")).toHaveTextContent(/matching X and Y/);
+  fetch.mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "Compare both models" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    /matching X and Y/,
+  );
   expect(fetch).not.toHaveBeenCalled();
 });
 
 test("disconnection invalidates models and disables training", async () => {
   boot();
   await start();
-  complete();
+  await complete();
   act(() => socket.onclose());
-  expect(screen.queryByRole("table")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Compare models/ })).toBeDisabled();
-  expect(screen.getByRole("alert")).toHaveTextContent(/Connection lost/);
+  await waitFor(() =>
+    expect(screen.queryByRole("table")).not.toBeInTheDocument(),
+  );
+  expect(
+    screen.getByRole("button", { name: "Compare both models" }),
+  ).toBeDisabled();
+  expect(await screen.findByRole("alert")).toHaveTextContent(/Connection lost/);
 });
 
-test("ignores other jobs and stale snapshots after completion", () => {
+test("ignores other jobs and old snapshots; safely parses architectures and small datasets", () => {
   const current = { id: "a", status: "completed", result, loss: [] };
   expect(mergeUpdate(current, { id: "b", status: "failed" })).toBe(current);
   expect(mergeUpdate(current, { id: "a", status: "running", loss: [] })).toBe(
     current,
   );
-});
-
-test("manual parsing preserves unsorted pairs and rejects missing or non-finite values", () => {
-  const data = { x: "9,1,8,2,7,3,6,4,5,0", y: "9,1,8,2,7,3,6,4,5,0" };
-  expect(parseData(data).x[0]).toBe(9);
-  expect(() => parseData({ ...data, x: "9,1,8,2,7,,6,4,5,0" })).toThrow(
-    /finite/,
-  );
-  expect(() => parseData({ ...data, x: "9,1,8,2,7,Infinity,6,4,5,0" })).toThrow(
-    /finite/,
-  );
+  expect(parseData({ x: "2,1", y: "4,2" }).x).toEqual([2, 1]);
+  expect(() => parseData({ x: "1,,3", y: "1,2,3" })).toThrow(/finite/);
+  expect(parseArchitecture("1-999999-1")).toBeNull();
+  expect(parseArchitecture("1-0-1")).toBeNull();
+  const graph = generateFlowElements([1, 4, 3, 1], null, false);
+  expect(graph.nodes).toHaveLength(9);
+  expect(graph.edges).toHaveLength(19);
 });

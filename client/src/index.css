@@ -1,142 +1,22 @@
-:root {
-  font-family:
-    Inter,
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-  color: #243247;
-  background: #f6f7f9;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-}
-* {
-  box-sizing: border-box;
-}
+/* client/src/index.css */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Add any other custom base styles below the directives */
 body {
   margin: 0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu",
+    "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
-button,
-input,
-select,
-textarea {
-  font: inherit;
+
+code {
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
-button,
-input,
-select,
-textarea,
-summary {
-  outline-offset: 4px;
-}
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
-summary:focus-visible,
-a:focus-visible {
-  outline: 3px solid #8aacf0;
-}
-button {
-  cursor: pointer;
-}
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-a {
-  color: inherit;
-}
-h1,
-h2,
-p {
-  margin: 0;
-}
-button {
-  border: 1px solid #d4dce6;
-  border-radius: 8px;
-  background: white;
-  color: #26374e;
-  padding: 10px 15px;
-  font-weight: 600;
-}
-button:hover:not(:disabled) {
-  background: #edf2fb;
-}
-fieldset {
-  border: 0;
-  padding: 0;
-  margin: 0;
-  min-width: 0;
-}
-input,
-select,
-textarea {
-  width: 100%;
-  background: #fff;
-  color: #253249;
-  border: 1px solid #d3dbe5;
-  border-radius: 7px;
-  padding: 10px;
-}
-input:disabled,
-select:disabled,
-textarea:disabled {
-  background: #f2f4f7;
-}
-textarea {
-  resize: vertical;
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
-  line-height: 1.6;
-}
-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  margin: 16px 0 7px;
-}
-input[type="range"] {
-  padding: 0;
-  accent-color: #2866cf;
-  height: 22px;
-}
-input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  accent-color: currentColor;
-}
-summary {
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 12px 0;
-}
-small {
-  display: block;
-  font-size: 11px;
-  line-height: 1.6;
-  color: #697589;
-  margin-top: 6px;
-}
-details p {
-  margin-bottom: 10px;
-}
-h2 {
-  font-size: 18px;
-  font-weight: 650;
-  letter-spacing: -0.4px;
-}
-table {
-  border-collapse: collapse;
-  width: 100%;
-}
-th,
-td {
-  text-align: left;
-}
-svg {
-  display: block;
-}
+
+/* You might have other global styles here */

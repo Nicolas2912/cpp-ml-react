@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { format } from "../data";
 
-export default function Predict({ predict, prediction, onPrediction }) {
+export default function Predict({
+  predict,
+  prediction,
+  onPrediction,
+  className = "",
+}) {
   const [x, setX] = useState("0");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -24,9 +29,12 @@ export default function Predict({ predict, prediction, onPrediction }) {
     }
   };
   return (
-    <section className="panel" aria-labelledby="predict-title">
+    <section
+      className={`comparison-card ${className}`}
+      aria-labelledby="predict-title"
+    >
       <h2 id="predict-title">Try a new input</h2>
-      <p className="muted">Evaluate both trained models at any X.</p>
+      <p className="comparison-muted">Evaluate both trained models at any X.</p>
       <form onSubmit={submit} className="predict-form">
         <label htmlFor="prediction-x">X value</label>
         <input
@@ -50,15 +58,17 @@ export default function Predict({ predict, prediction, onPrediction }) {
         <div aria-live="polite">
           <div className="prediction-values">
             <p>
-              <span className="lr">Linear regression</span>
+              <span className="comparison-lr">Linear regression</span>
               <strong>{format(prediction.lr)}</strong>
             </p>
             <p>
-              <span className="nn">Neural network</span>
+              <span className="comparison-nn">Neural network</span>
               <strong>{format(prediction.nn)}</strong>
             </p>
           </div>
-          <p className="muted">Predicted Y at X = {format(prediction.x)}.</p>
+          <p className="comparison-muted">
+            Predicted Y at X = {format(prediction.x)}.
+          </p>
           {prediction.extrapolation && (
             <p className="notice">
               This X is outside your dataset. Extrapolated predictions may be
