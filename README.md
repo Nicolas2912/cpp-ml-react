@@ -1,6 +1,17 @@
 # ML playground
 
-Compare a C++ linear regressor and a small neural network on the same dataset. The React interface preserves the original light/dark design, Data Composer, random generator with linearity control, separate model tabs and prediction inputs, raw-data and overlay charts, live loss stream, and network blueprint. It adds held-out comparison scores, a compare-both action, cancellation, and real C++ predictions.
+Compare a C++ linear regressor and a small neural network on the same dataset. The React interface keeps the original experiment workflow and adds fair held-out evaluation, isolated training jobs, cancellation, and real C++ inference.
+
+## Current features
+
+- Compose comma-separated X/Y data, load linear, curved, or wave samples, or generate randomized data with point-count and linearity controls.
+- Train linear regression and the neural network independently from their original model tabs, or train both together on the same deterministic 80/20 split.
+- Inspect the raw dataset and the combined model overlay, including training points, held-out points, fitted curves, and new predictions.
+- Compare training MSE, held-out test MSE, test R², and compute time in one table. All displayed MSE values use the original Y scale.
+- Stream neural-network loss during training and cancel an active run.
+- Build a `1-N-…-1` neural architecture visually: add or remove hidden layers, choose 1–32 neurons per hidden layer, select nodes, and pan, zoom, or fit the graph.
+- Predict from either original model panel or evaluate both trained models together. Neural predictions reload the trained C++ weights rather than interpolating displayed points.
+- Switch between the original light and dark themes. The full workflow is responsive on narrow screens.
 
 ## Run locally
 
@@ -52,7 +63,7 @@ Open http://127.0.0.1:3000. Vite proxies `/api` and `/ws` to the API on port 300
 
 A WebSocket connection receives an opaque session token. HTTP requests send it as `Authorization: Bearer <token>`. Jobs have unique IDs; only the owning session can read, cancel, or predict with them. Progress goes to that connection only.
 
-Models live in server memory, with a 30-minute TTL and at most three retained runs per session. Disconnecting or restarting the server discards them; the UI reconnects and asks you to train again. This is a local playground, without accounts or disk model storage.
+Models live in server memory, with a 30-minute TTL and at most three retained runs per session. The retention logic keeps the latest independently trained LR and NN models available for comparison where possible. Disconnecting or restarting the server discards them; the UI reconnects and asks you to train again. This is a local playground, without accounts or disk model storage.
 
 Limits: 2–1,000 input pairs; finite values within ±1,000,000; one input/output neuron; up to four hidden layers of 32 neurons; 1–10,000 epochs; learning rate in `(0, 1]`. A parameter × point × epoch budget rejects overly large runs. Each engine process has a 30-second timeout and a 2 MB output limit. The server allows four simultaneous compute operations, one training job per session, 32 connections, and 64 retained jobs globally. Disconnect and cancellation terminate associated subprocesses.
 
@@ -77,7 +88,7 @@ npm --prefix client test
 npm --prefix client run build
 ```
 
-Server integration tests launch real C++ processes and HTTP/WebSocket clients. They cover inference, metric scaling, repeatability, session isolation, validation, cancellation, expiry, capacity, malformed output, launch failure, and timeout. UI tests cover training progress, results, prediction, errors, cancellation, invalid data, stale updates, and disconnects. CI runs these checks and the production build.
+Server integration tests launch real C++ processes and HTTP/WebSocket clients. They cover inference, metric scaling, repeatability, independent and paired training, small datasets, session isolation, model retention, validation, cancellation, expiry, capacity, malformed output, launch failure, and timeout. UI tests cover the restored composer and themes, separate model tabs, comparison training, prediction, architecture editing, node selection, cancellation, invalid data, stale updates, and disconnects. CI runs these checks and the production build.
 
 Browser check: train LR and NN separately, then compare both; inspect held-out scores and predict through each original model input and the paired prediction form. In the Neural Network tab, show the blueprint, add/remove hidden layers, adjust neuron counts, select nodes, and use zoom/fit controls. Change the dataset, cancel a long run, and toggle the light/dark theme. Repeat at a narrow mobile width. Test loss of the API connection and recovery.
 
