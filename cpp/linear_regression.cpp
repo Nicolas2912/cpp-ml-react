@@ -6,7 +6,6 @@
 #include <cmath>
 #include <vector>
 #include <random>
-#include <omp.h>
 #include <limits>
 
 // Updated Constructor

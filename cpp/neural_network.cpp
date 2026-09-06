@@ -2,21 +2,25 @@
 #include <random>       // For random number generation
 #include <stdexcept>    // For exceptions
 #include <algorithm>    // For std::transform
+#include <iomanip>
+#include <limits>
 #include <numeric>      // For std::inner_product
 
-// --- Constructor ---
-NeuralNetwork::NeuralNetwork(const std::vector<size_t>& layer_sizes, double learning_rate)
-    : layer_sizes_(layer_sizes), learning_rate_(learning_rate) {
+NeuralNetwork::NeuralNetwork(const std::vector<size_t>& layer_sizes, double learning_rate, unsigned seed)
+    : layer_sizes_(layer_sizes), learning_rate_(learning_rate), generator_(seed) {
     if (layer_sizes_.size() < 2) {
         throw std::invalid_argument("Network must have at least an input and an output layer.");
+    }
+    if (!std::isfinite(learning_rate) || learning_rate <= 0 || learning_rate > 1) {
+        throw std::invalid_argument("Learning rate must be between 0 (exclusive) and 1.");
+    }
+    if (layer_sizes.size() > 6 || std::any_of(layer_sizes.begin(), layer_sizes.end(), [](size_t n) { return n == 0 || n > 32; })) {
+        throw std::invalid_argument("Use at most 6 layers of 1 to 32 neurons.");
     }
     initialize_weights_biases();
 }
 
-// --- Weight and Bias Initialization ---
 void NeuralNetwork::initialize_weights_biases() {
-    std::random_device rd;
-    std::mt19937 gen(rd());
     // He initialization recommended for ReLU, Xavier/Glorot for sigmoid/tanh
     // Using a simple small random range for now
     std::uniform_real_distribution<> dis(-0.5, 0.5); // Distribution for weights
@@ -33,19 +37,18 @@ void NeuralNetwork::initialize_weights_biases() {
         weights_[i].resize(rows, Vector(cols));
         for (size_t r = 0; r < rows; ++r) {
             for (size_t c = 0; c < cols; ++c) {
-                weights_[i][r][c] = dis(gen) * sqrt(1.0 / cols); // Scaled initialization
+                weights_[i][r][c] = dis(generator_) * sqrt(1.0 / cols); // Scaled initialization
             }
         }
 
         // Initialize biases
         biases_[i].resize(rows);
         for (size_t r = 0; r < rows; ++r) {
-            biases_[i][r] = bias_dis(gen);
+            biases_[i][r] = bias_dis(generator_);
         }
     }
 }
 
-// --- Activation Functions ---
 double NeuralNetwork::sigmoid(double x) {
     return 1.0 / (1.0 + std::exp(-x));
 }
@@ -55,7 +58,6 @@ double NeuralNetwork::sigmoid_derivative(double x) {
     return sig * (1.0 - sig);
 }
 
-// --- Loss Function ---
 double NeuralNetwork::mean_squared_error(const Vector& predicted, const Vector& target) {
     if (predicted.size() != target.size()) {
         throw std::invalid_argument("Predicted and target vectors must have the same size for MSE.");
@@ -80,7 +82,6 @@ Vector NeuralNetwork::mean_squared_error_derivative(const Vector& predicted, con
 }
 
 
-// --- Forward Pass ---
 Vector NeuralNetwork::forward_pass(const Vector& input) {
     if (input.size() != layer_sizes_[0]) {
         throw std::invalid_argument("Input vector size does not match network input layer size.");
@@ -113,7 +114,6 @@ Vector NeuralNetwork::forward_pass(const Vector& input) {
     return current_output; // Final layer's output
 }
 
-// --- Prediction ---
 Vector NeuralNetwork::predict(const Vector& input) {
     // Forward pass without storing intermediate values for training
     if (input.size() != layer_sizes_[0]) {
@@ -135,7 +135,6 @@ Vector NeuralNetwork::predict(const Vector& input) {
 }
 
 
-// --- Backpropagation ---
 void NeuralNetwork::backpropagate(const Vector& input, const Vector& target) {
     // 1. Perform forward pass to get activations and pre-activation inputs
     Vector predicted_output = forward_pass(input); // This also populates layer_outputs_ and layer_inputs_
@@ -188,7 +187,6 @@ void NeuralNetwork::backpropagate(const Vector& input, const Vector& target) {
 }
 
 
-// --- Training ---
 void NeuralNetwork::train(const Vector& input, const Vector& target) {
     // For a single data point, training is just one backpropagation step
     backpropagate(input, target);
@@ -197,13 +195,15 @@ void NeuralNetwork::train(const Vector& input, const Vector& target) {
 }
 
 
-// --- Train for multiple epochs with reporting ---
 Vector NeuralNetwork::train_for_epochs(
     const std::vector<Vector>& inputs,
     const std::vector<Vector>& targets,
     int epochs,
     int report_every_n_epochs
 ) {
+    if (epochs <= 0 || epochs > 10000 || report_every_n_epochs <= 0) {
+        throw std::invalid_argument("Invalid epoch count or reporting interval.");
+    }
     if (inputs.empty() || inputs.size() != targets.size()) {
         throw std::invalid_argument("Input and target datasets must be non-empty and have the same size.");
     }
@@ -212,15 +212,13 @@ Vector NeuralNetwork::train_for_epochs(
     std::vector<size_t> indices(n_samples);
     std::iota(indices.begin(), indices.end(), 0);
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
 
     Vector final_predictions;
     final_predictions.reserve(n_samples);
 
     for (int epoch = 0; epoch < epochs; ++epoch) {
         // Shuffle data for stochasticity (optional but often good)
-        std::shuffle(indices.begin(), indices.end(), gen);
+        std::shuffle(indices.begin(), indices.end(), generator_);
 
         // Train on each sample in the (shuffled) dataset
         for (size_t i = 0; i < n_samples; ++i) {
@@ -240,6 +238,9 @@ Vector NeuralNetwork::train_for_epochs(
                 current_mse += mean_squared_error(prediction, targets[i]);
             }
             current_mse /= n_samples;
+            if (!std::isfinite(current_mse)) {
+                throw std::runtime_error("Training diverged. Try a smaller learning rate.");
+            }
             std::cout << "epoch=" << (epoch + 1) << ",mse=" << current_mse << std::endl;
         }
     }
@@ -260,7 +261,6 @@ Vector NeuralNetwork::train_for_epochs(
 }
 
 
-// --- Matrix/Vector Operations Implementations ---
 
 // Matrix * Vector
 Vector NeuralNetwork::multiply(const Matrix& matrix, const Vector& vector) {
@@ -274,7 +274,6 @@ Vector NeuralNetwork::multiply(const Matrix& matrix, const Vector& vector) {
         for (size_t j = 0; j < cols; ++j) {
             result[i] += matrix[i][j] * vector[j];
         }
-        // Alternative using inner_product:
         // result[i] = std::inner_product(matrix[i].begin(), matrix[i].end(), vector.begin(), 0.0);
     }
     return result;
@@ -367,4 +366,36 @@ Vector NeuralNetwork::multiply(const Vector& vec, double scalar) {
     std::transform(result.begin(), result.end(), result.begin(),
                    [scalar](double val){ return val * scalar; });
     return result;
+}
+
+// Round-trip every parameter at double precision. Models stay in server memory.
+void NeuralNetwork::save(std::ostream& out) const {
+    out << std::setprecision(17) << layer_sizes_.size();
+    for (size_t size : layer_sizes_) out << " " << size;
+    for (size_t l = 0; l < weights_.size(); ++l) {
+        for (const auto& row : weights_[l]) {
+            for (double value : row) out << " " << value;
+        }
+        for (double value : biases_[l]) out << " " << value;
+    }
+}
+
+NeuralNetwork NeuralNetwork::load(std::istream& in) {
+    size_t count;
+    if (!(in >> count) || count < 2 || count > 6) throw std::invalid_argument("Invalid model layers.");
+    std::vector<size_t> sizes(count);
+    for (auto& size : sizes) {
+        if (!(in >> size) || size == 0 || size > 32) throw std::invalid_argument("Invalid model size.");
+    }
+    NeuralNetwork model(sizes);
+    auto read_value = [&in](double& value) {
+        if (!(in >> value) || !std::isfinite(value)) throw std::invalid_argument("Invalid model parameter.");
+    };
+    for (size_t l = 0; l < model.weights_.size(); ++l) {
+        for (auto& row : model.weights_[l]) for (auto& value : row) read_value(value);
+        for (auto& value : model.biases_[l]) read_value(value);
+    }
+    in >> std::ws;
+    if (!in.eof()) throw std::invalid_argument("Unexpected model data.");
+    return model;
 }

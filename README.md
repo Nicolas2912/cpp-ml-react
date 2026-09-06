@@ -1,123 +1,82 @@
-# C++ ML Playground: Linear Regression & Neural Network
+# ML playground
 
-[![C++](https://github.com/Nicolas2912/cpp-ml-react/actions/workflows/cpp.yml/badge.svg?branch=master)](https://github.com/Nicolas2912/cpp-ml-react/actions/workflows/cpp.yml)
-[![Client](https://github.com/Nicolas2912/cpp-ml-react/actions/workflows/client.yml/badge.svg?branch=master)](https://github.com/Nicolas2912/cpp-ml-react/actions/workflows/client.yml)
-[![Server](https://github.com/Nicolas2912/cpp-ml-react/actions/workflows/server.yml/badge.svg?branch=master)](https://github.com/Nicolas2912/cpp-ml-react/actions/workflows/server.yml)
+Compare a C++ linear regressor and a small neural network on the same dataset. The React interface shows their fitted curves, held-out test scores, and predictions for new inputs.
 
-A full-stack application demonstrating Linear Regression and a basic Feedforward Neural Network trained using C++ and visualized with React, Node.js, and WebSockets.
+## Run locally
 
-![gif](./gif/app.gif)
+Requires Node.js 22.12+ (Node 24 LTS recommended), npm, make, and a C++11 compiler. GCC uses OpenMP; Clang can build sequentially when libomp is unavailable.
 
-## Features
+```sh
+make -C cpp
+npm --prefix server ci
+npm --prefix client ci
+```
 
--   **Linear Regression**:
-    -   Train a model using the analytical solution (normal equation).
-    -   Visualize data points and the resulting regression line.
-    -   Make predictions on new data points.
-    -   View model performance metrics (MSE, R² score).
--   **Neural Network**:
-    -   Define custom network structures (e.g., "1-4-1").
-    -   Train a feedforward network using gradient descent.
-    -   Specify learning rate and number of epochs.
-    -   Real-time training loss visualization (MSE vs. Epoch) via WebSockets.
-    -   Visualize NN predictions (orange triangles) alongside original data points, connected by a smooth interpolated line.
-    -   View final MSE and training time.
--   **General**:
-    -   Input data manually or generate random datasets with adjustable linearity.
-    -   Interactive charts powered by Chart.js.
-    -   Modern UI built with React and DaisyUI/Tailwind CSS.
-    -   Dark/light theme toggle.
+Start these in separate terminals:
 
-## Project Structure
+```sh
+npm --prefix server start
+npm --prefix client start
+```
 
--   **`client/`**: React frontend using `create-react-app`. Handles UI, visualization, and WebSocket communication.
--   **`server/`**: Node.js/Express backend API. Manages requests, invokes the C++ executable, and relays NN training progress via WebSockets.
--   **`cpp/`**: C++ engine containing:
-    -   `linear_regression.h/.cpp`: Implementation of the Linear Regression model.
-    -   `neural_network.h/.cpp`: Implementation of the Feedforward Neural Network.
-    -   `main_server.cpp`: Main C++ application handling command-line arguments (`lr_train`, `nn_train_predict`) and interacting with the Node.js server via stdin/stdout.
-    -   `Makefile`: Used to build the C++ executable.
+Open http://127.0.0.1:3000. Vite proxies `/api` and `/ws` to the API on port 3001. Both servers bind to loopback. Use the Vite origin for browser requests.
 
-## Installation
+## What the comparison measures
 
-### Prerequisites
+- The server shuffles pairs with seed 42 and holds out 20% (rounded, at least two points). Both models train on the other 80%.
+- NN normalization uses **training values only**. Training loss, train MSE, and test MSE are all returned in original Y units squared.
+- Lower test MSE means better predictions on this particular split. A low training error alone does not establish generalization. Repeated tuning against one test split can overfit that split.
+- Test R² compares predictions with the test-set mean: 1 is perfect, 0 matches that baseline, and negative values are worse. It is undefined (`null`) for constant test targets.
+- Compute time includes training and engine evaluation/output, excluding process startup and network latency. It is not a rigorous benchmark.
+- NN hidden layers use sigmoid activation; the output is linear. Training uses stochastic gradient descent with fixed initialization/shuffling seeds. Repeated runs with the same build and inputs are reproducible; timings and cross-platform floating-point results may vary.
+- “Predict both” runs C++ inference using the actual trained parameters. NN weights round-trip at full double precision. New predictions are neither interpolation nor endpoint clamping.
 
--   Node.js (v14 or higher recommended)
--   npm (usually comes with Node.js)
--   A C++ compiler supporting C++11 or later (e.g., g++, Clang, MSVC)
--   `make` build tool (standard on Linux/macOS, can be installed on Windows e.g., via Chocolatey `choco install make` or MinGW/MSYS2)
+## Structure
 
-### Setup
+| Location                            | Purpose                                                   |
+| ----------------------------------- | --------------------------------------------------------- |
+| `client/src/App.jsx`                | Dataset, settings, and comparison workflow                |
+| `client/src/hooks/useComparison.js` | Connection lifecycle and job updates                      |
+| `client/src/components/`            | Fit/loss charts, score table, prediction form             |
+| `server/server.js`                  | HTTP/WebSocket endpoints and session ownership            |
+| `server/jobs.js`                    | Training, evaluation, model retention, cancellation       |
+| `server/engine.js`                  | Bounded subprocess execution and streamed output parsing  |
+| `server/data.js`                    | Validation, splitting, scaling, metrics                   |
+| `cpp/main_server.cpp`               | CLI protocol                                              |
+| `cpp/neural_network.*`              | Network training, inference, serialization                |
+| `cpp/linear_regression.*`           | Analytical regression and gradient-descent implementation |
 
-1.  **Clone the repository**:
-    ```powershell
-    git clone https://github.com/Nicolas2912/cpp-ml-react.git
-    cd cpp-ml-react
-    ```
+## Sessions and limits
 
-2.  **Build the C++ executable**:
-    The server expects the executable `linear_regression_app` (or `linear_regression_app.exe` on Windows) in the `cpp/` directory.
-    ```powershell
-    cd cpp
-    make # This should create the 'linear_regression_app' executable
-    cd ..
-    ```
-    *(Note: Verify the `Makefile` target name matches `linear_regression_app`)*
+A WebSocket connection receives an opaque session token. HTTP requests send it as `Authorization: Bearer <token>`. Jobs have unique IDs; only the owning session can read, cancel, or predict with them. Progress goes to that connection only.
 
-3.  **Install Server Dependencies and Start**:
-    ```powershell
-    cd server
-    npm install
-    npm start
-    ```
-    *(Keep this terminal running)*
+Models live in server memory, with a 30-minute TTL and at most three retained runs per session. Disconnecting or restarting the server discards them; the UI reconnects and asks you to train again. This is a local playground, without accounts or disk model storage.
 
-4.  **Install Client Dependencies and Start**:
-    Open a *new* terminal in the project root.
-    ```powershell
-    cd client
-    npm install
-    npm start
-    ```
+Limits: 10–1,000 input pairs; finite values within ±1,000,000; one input/output neuron; up to four hidden layers of 32 neurons; 1–10,000 epochs; learning rate in `(0, 1]`. A parameter × point × epoch budget rejects overly large runs. Each engine process has a 30-second timeout and a 2 MB output limit. The server allows four simultaneous compute operations, one training job per session, 32 connections, and 64 retained jobs globally. Disconnect and cancellation terminate associated subprocesses.
 
-The application should now open automatically in your browser, typically at `http://localhost:3000`. The server runs on `http://localhost:3001`.
+API:
 
-## Usage
+| Method / path                | Purpose                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------- |
+| `GET /api/health`            | API liveness                                                                    |
+| `POST /api/jobs`             | Train both models; body: `{x, y, layers, learningRate, epochs}`; returns `{id}` |
+| `GET /api/jobs/:id`          | Recover the latest status, loss, and results                                    |
+| `POST /api/jobs/:id/cancel`  | Cancel an active run                                                            |
+| `POST /api/jobs/:id/predict` | Evaluate both models; body: `{x}`                                               |
 
-1.  **Input Data**:
-    -   Enter comma-separated X and Y values in the text areas.
-    -   *Alternatively*, configure the number of points and linearity factor, then click "Generate" to create random data.
+WebSocket `/ws` events: `session`, `progress`, `completed`, `failed`, `cancelled`. Job events include `id`. The former `/api/lr_*` and `/api/nn_train_predict` HTTP routes have been replaced by this unified job API.
 
-2.  **Linear Regression**:
-    -   Click "Train Linear Regression".
-    -   Results (Slope, Intercept, MSE, R², Time) will appear below the button.
-    -   The regression line will be drawn on the chart.
-    -   Enter an X value under "Predict Y for LR Model" and click "Predict" to see the predicted point (green cross) and value.
+## Verify
 
-3.  **Neural Network**:
-    -   Configure the "Layer Sizes" (e.g., `1-4-1`), "Learning Rate", and "Epochs".
-    -   Click "Train NN & Predict".
-    -   Training progress (MSE vs. Epoch) will stream to the loss chart below the button.
-    -   Once complete, final results (Final MSE, Time) will appear.
-    -   NN predictions for the input X values will be plotted as orange triangles on the main chart.
+```sh
+OMP_NUM_THREADS=1 make -C cpp test_all
+npm --prefix server test
+npm --prefix client test
+npm --prefix client run build
+```
 
-4.  **Visualization**:
-    -   The main chart displays data points, the LR line (if trained), LR predictions (if made), and NN predictions (triangles connected by an interpolated curve, if trained).
-    -   Hover over points/lines for details.
-    -   The chart automatically adjusts its axes to fit the data and predictions.
+Server integration tests launch real C++ processes and HTTP/WebSocket clients. They cover inference, metric scaling, repeatability, session isolation, validation, cancellation, expiry, capacity, malformed output, launch failure, and timeout. UI tests cover training progress, results, prediction, errors, cancellation, invalid data, stale updates, and disconnects. CI runs these checks and the production build.
 
-## Technologies
+Browser check: choose Curve, compare models, inspect the held-out scores, predict at a new X, toggle a model line, change the dataset, and cancel a long run. Repeat at a narrow mobile width. Test loss of the API connection and recovery.
 
--   **Frontend**: React, Chart.js, DaisyUI, Tailwind CSS
--   **Backend**: Node.js, Express, ws (for WebSockets)
--   **C++ Engine**: Standard C++ (C++11) for Linear Regression (analytical solution) and Neural Network (gradient descent).
--   **Build Tools**: Make, npm
-
-## License
-
-MIT
-
-## Acknowledgments
-
-- [DaisyUI](https://daisyui.com/) for the UI components
-- [Chart.js](https://www.chartjs.org/) for data visualization
+The production bundle is written to `client/build`. A deployment would need same-origin `/api` and `/ws` reverse proxying to the Node server; the build alone does not provide the backend.
