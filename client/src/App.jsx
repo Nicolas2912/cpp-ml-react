@@ -132,10 +132,10 @@ function App() {
     ? "bg-indigo-500/20 text-indigo-200 border border-indigo-400/40"
     : "bg-indigo-100 text-indigo-700 border border-indigo-300";
   const sectionLabelClass = isDark
-    ? "text-[0.65rem] font-semibold uppercase tracking-[0.45em] text-indigo-300/80"
-    : "text-[0.65rem] font-semibold uppercase tracking-[0.45em] text-indigo-600/70";
+    ? "block text-[0.65rem] leading-6 font-semibold uppercase tracking-[0.45em] text-indigo-300/80"
+    : "block text-[0.65rem] leading-6 font-semibold uppercase tracking-[0.45em] text-indigo-600/70";
   const baseInputClasses =
-    "min-w-0 w-full rounded-2xl border px-4 py-3 text-base shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-0 disabled:opacity-60 disabled:cursor-not-allowed";
+    "min-w-0 w-full rounded-2xl border px-4 py-3 text-base shadow-xs transition focus:outline-hidden focus:ring-2 focus:ring-offset-0 disabled:opacity-60 disabled:cursor-not-allowed";
   const inputSurfaceClasses = isDark
     ? "bg-slate-900/60 border-slate-700 text-slate-100 placeholder-slate-500 focus:border-indigo-400 focus:ring-indigo-400/70"
     : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-indigo-500/40";
@@ -146,14 +146,15 @@ function App() {
   const sliderTrackClass = isDark
     ? "accent-indigo-400 text-indigo-300"
     : "accent-indigo-500 text-indigo-500";
-  const fieldLabelClass = isDark
+  const fieldLabelTextClass = isDark
     ? "text-[0.75rem] font-semibold uppercase tracking-[0.3em] text-slate-200"
     : "text-[0.75rem] font-semibold uppercase tracking-[0.3em] text-slate-600";
+  const fieldLabelClass = `block leading-6 ${fieldLabelTextClass}`;
   const mutedTextClass = isDark ? "text-slate-400" : "text-slate-600";
-  const primaryButtonClass = `inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-0 disabled:opacity-60 disabled:pointer-events-none ${isDark ? "bg-indigo-500/90 hover:bg-indigo-400 focus:ring-indigo-400/70 text-white shadow-lg shadow-indigo-900/40" : "bg-indigo-600 hover:bg-indigo-500 focus:ring-indigo-500/50 text-white shadow-lg shadow-indigo-300/40"}`;
-  const secondaryButtonClass = `inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-0 disabled:opacity-60 disabled:pointer-events-none ${isDark ? "bg-emerald-500/90 hover:bg-emerald-400 focus:ring-emerald-400/70 text-white shadow-lg shadow-emerald-900/30" : "bg-emerald-500 hover:bg-emerald-400 focus:ring-emerald-500/40 text-white shadow-lg shadow-emerald-300/40"}`;
-  const outlineButtonClass = `inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-0 disabled:opacity-60 disabled:pointer-events-none ${isDark ? "border border-slate-700/80 bg-transparent text-slate-100 hover:border-slate-500 focus:ring-slate-500/40" : "border border-slate-200 bg-white text-slate-700 hover:border-slate-400 focus:ring-slate-400/30"}`;
-  const accentButtonClass = `inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-0 disabled:opacity-60 disabled:pointer-events-none ${isDark ? "bg-fuchsia-500/80 hover:bg-fuchsia-400 focus:ring-fuchsia-400/70 text-white shadow-lg shadow-fuchsia-900/30" : "bg-fuchsia-500 hover:bg-fuchsia-400 focus:ring-fuchsia-500/40 text-white shadow-lg shadow-fuchsia-300/40"}`;
+  const primaryButtonClass = `inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition focus:outline-hidden focus:ring-2 focus:ring-offset-0 disabled:opacity-60 disabled:pointer-events-none ${isDark ? "bg-indigo-500/90 hover:bg-indigo-400 focus:ring-indigo-400/70 text-white shadow-lg shadow-indigo-900/40" : "bg-indigo-600 hover:bg-indigo-500 focus:ring-indigo-500/50 text-white shadow-lg shadow-indigo-300/40"}`;
+  const secondaryButtonClass = `inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition focus:outline-hidden focus:ring-2 focus:ring-offset-0 disabled:opacity-60 disabled:pointer-events-none ${isDark ? "bg-emerald-500/90 hover:bg-emerald-400 focus:ring-emerald-400/70 text-white shadow-lg shadow-emerald-900/30" : "bg-emerald-500 hover:bg-emerald-400 focus:ring-emerald-500/40 text-white shadow-lg shadow-emerald-300/40"}`;
+  const outlineButtonClass = `inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition focus:outline-hidden focus:ring-2 focus:ring-offset-0 disabled:opacity-60 disabled:pointer-events-none ${isDark ? "border border-slate-700/80 bg-transparent text-slate-100 hover:border-slate-500 focus:ring-slate-500/40" : "border border-slate-200 bg-white text-slate-700 hover:border-slate-400 focus:ring-slate-400/30"}`;
+  const accentButtonClass = `inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition focus:outline-hidden focus:ring-2 focus:ring-offset-0 disabled:opacity-60 disabled:pointer-events-none ${isDark ? "bg-fuchsia-500/80 hover:bg-fuchsia-400 focus:ring-fuchsia-400/70 text-white shadow-lg shadow-fuchsia-900/30" : "bg-fuchsia-500 hover:bg-fuchsia-400 focus:ring-fuchsia-500/40 text-white shadow-lg shadow-fuchsia-300/40"}`;
   const metricCardClass = isDark
     ? "rounded-2xl border border-slate-800/80 bg-slate-900/50 p-5 shadow-inner shadow-black/20"
     : "rounded-2xl border border-slate-200 bg-slate-50/80 p-5 shadow-inner shadow-slate-200/60";
@@ -169,7 +170,7 @@ function App() {
     >
       <div className="relative isolate overflow-hidden">
         <div
-          className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${ambientGradientClass}`}
+          className={`pointer-events-none absolute inset-0 bg-linear-to-br ${ambientGradientClass}`}
         />
 
         <header className="relative z-10">
@@ -183,7 +184,7 @@ function App() {
                 predictions in one view.
               </h1>
               <p
-                className={`text-sm sm:text-base leading-relaxed ${mutedTextClass}`}
+                className={`text-sm sm:text-base leading-relaxed sm:leading-6 ${mutedTextClass}`}
               >
                 Use the composer to sculpt input data, launch regression or
                 neural experiments, and watch the visual canvas respond in real
@@ -223,7 +224,7 @@ function App() {
               <button
                 type="button"
                 onClick={toggleTheme}
-                className={`rounded-full border border-transparent p-3 transition focus:outline-none focus:ring-2 focus:ring-offset-0 ${isDark ? "bg-slate-900/60 hover:bg-slate-900/40 focus:ring-indigo-400/60" : "bg-white/80 hover:bg-white focus:ring-indigo-500/40 shadow-lg shadow-indigo-200/30"}`}
+                className={`rounded-full border border-transparent p-3 transition focus:outline-hidden focus:ring-2 focus:ring-offset-0 ${isDark ? "bg-slate-900/60 hover:bg-slate-900/40 focus:ring-indigo-400/60" : "bg-white/80 hover:bg-white focus:ring-indigo-500/40 shadow-lg shadow-indigo-200/30"}`}
                 aria-label="Toggle theme"
               >
                 {activeTheme === "light" ? (
@@ -335,7 +336,7 @@ function App() {
                       Handcraft or randomize points
                     </h2>
                     <p
-                      className={`text-sm sm:text-base leading-relaxed ${mutedTextClass}`}
+                      className={`text-sm sm:text-base leading-relaxed sm:leading-6 ${mutedTextClass}`}
                     >
                       Supply comma-separated X and Y values or spin up a
                       synthetic sample to explore model behaviour.
@@ -479,7 +480,7 @@ function App() {
                       Configure, train, and inspect
                     </h2>
                     <p
-                      className={`text-sm sm:text-base leading-relaxed ${mutedTextClass}`}
+                      className={`text-sm sm:text-base leading-relaxed sm:leading-6 ${mutedTextClass}`}
                     >
                       Toggle between linear regression and neural workflows to
                       adjust inputs and view results in real time.
@@ -741,7 +742,7 @@ function App() {
                         </div>
                         {nnResults && !loadingNN && (
                           <p
-                            className={`mt-3 text-xs sm:text-sm leading-relaxed ${mutedTextClass}`}
+                            className={`mt-3 text-xs sm:text-sm leading-relaxed sm:leading-5 ${mutedTextClass}`}
                             role="status"
                           >
                             {nnResults.validationCount > 0
@@ -903,7 +904,7 @@ function App() {
                         </div>
                         <div className="space-y-2">
                           <label
-                            className={`${fieldLabelClass} flex items-center gap-2`}
+                            className={`${fieldLabelTextClass} flex items-center gap-2`}
                             htmlFor="early-stopping"
                           >
                             <input
@@ -1072,7 +1073,7 @@ function App() {
                     Raw distribution
                   </h2>
                   <p
-                    className={`text-sm sm:text-base leading-relaxed ${mutedTextClass}`}
+                    className={`text-sm sm:text-base leading-relaxed sm:leading-6 ${mutedTextClass}`}
                   >
                     Explore your dataset without model overlays to understand
                     its natural structure.
@@ -1097,7 +1098,7 @@ function App() {
                     Compare predictions with truth
                   </h2>
                   <p
-                    className={`text-sm sm:text-base leading-relaxed ${mutedTextClass}`}
+                    className={`text-sm sm:text-base leading-relaxed sm:leading-6 ${mutedTextClass}`}
                   >
                     Visualize regression and neural outputs alongside your
                     original data.
@@ -1114,7 +1115,7 @@ function App() {
                   </div>
                 </div>
                 <div
-                  className={`grid gap-3 rounded-2xl border p-5 text-xs sm:text-sm leading-relaxed ${isDark ? "border-slate-800/70 bg-slate-900/50 text-slate-300" : "border-slate-200 bg-slate-50 text-slate-600"}`}
+                  className={`grid gap-3 rounded-2xl border p-5 text-xs sm:text-sm leading-relaxed sm:leading-5 ${isDark ? "border-slate-800/70 bg-slate-900/50 text-slate-300" : "border-slate-200 bg-slate-50 text-slate-600"}`}
                 >
                   <div
                     className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.3em] ${isDark ? "bg-indigo-500/20 text-indigo-200" : "bg-indigo-100 text-indigo-700"}`}
@@ -1178,7 +1179,7 @@ function App() {
                       Layer topology preview
                     </h2>
                     <p
-                      className={`text-sm sm:text-base leading-relaxed ${mutedTextClass}`}
+                      className={`text-sm sm:text-base leading-relaxed sm:leading-6 ${mutedTextClass}`}
                     >
                       Inspect how inputs, hidden units, and outputs connect for
                       the current architecture.
