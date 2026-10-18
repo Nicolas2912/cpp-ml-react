@@ -37,6 +37,8 @@ function App() {
     setNnLearningRateInput,
     nnEpochsInput,
     setNnEpochsInput,
+    nnActivation,
+    setNnActivation,
     nnResults,
     nnError,
     setNnError,
@@ -720,7 +722,7 @@ function App() {
                             placeholder="0.01"
                           />
                         </div>
-                        <div className="space-y-2 sm:col-span-2">
+                        <div className="space-y-2">
                           <label className={fieldLabelClass} htmlFor="epochs">
                             Epochs
                           </label>
@@ -735,6 +737,46 @@ function App() {
                             disabled={busy || !connected}
                             placeholder="1000"
                           />
+                        </div>
+                        <div className="space-y-2">
+                          <label
+                            className={fieldLabelClass}
+                            htmlFor="activation"
+                          >
+                            Hidden activation
+                          </label>
+                          <div className="relative">
+                            <select
+                              id="activation"
+                              className={selectClassName}
+                              value={nnActivation}
+                              onChange={(e) => setNnActivation(e.target.value)}
+                              disabled={busy || !connected}
+                            >
+                              <option value="sigmoid">Sigmoid</option>
+                              <option value="tanh">Tanh</option>
+                              <option value="relu">ReLU</option>
+                            </select>
+                            <span
+                              className={`pointer-events-none absolute inset-y-0 right-4 flex items-center ${selectArrowClass}`}
+                              aria-hidden="true"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M6 9l6 6 6-6"
+                                />
+                              </svg>
+                            </span>
+                          </div>
                         </div>
                       </div>
 

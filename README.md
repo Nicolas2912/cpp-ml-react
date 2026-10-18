@@ -10,6 +10,7 @@ Compare a C++ linear regressor and a small neural network on the same dataset. T
 - Compare training MSE, held-out test MSE, test R², and compute time in one table. All displayed MSE values use the original Y scale.
 - Stream neural-network loss during training and cancel an active run.
 - Build a `1-N-…-1` neural architecture visually: add or remove hidden layers, choose 1–32 neurons per hidden layer, select nodes, and pan, zoom, or fit the graph.
+- Choose the hidden-layer activation: sigmoid (default), tanh with Xavier initialization, or ReLU with He initialization.
 - Predict from either original model panel or evaluate both trained models together. Neural predictions reload the trained C++ weights rather than interpolating displayed points.
 - Switch between the original light and dark themes. The full workflow is responsive on narrow screens.
 
@@ -69,13 +70,13 @@ Limits: 2–1,000 input pairs; finite values within ±1,000,000; one input/outpu
 
 API:
 
-| Method / path                | Purpose                                                                                                                                   |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/health`            | API liveness                                                                                                                              |
-| `POST /api/jobs`             | Train the selected model(s); body: `{x, y, layers, learningRate, epochs, model}` (`model`: `lr`, `nn`, or default `both`); returns `{id}` |
-| `GET /api/jobs/:id`          | Recover the latest status, loss, and results                                                                                              |
-| `POST /api/jobs/:id/cancel`  | Cancel an active run                                                                                                                      |
-| `POST /api/jobs/:id/predict` | Evaluate both models; body: `{x, model}` (model optional)                                                                                 |
+| Method / path                | Purpose                                                                                                                                                                                                     |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`            | API liveness                                                                                                                                                                                                |
+| `POST /api/jobs`             | Train the selected model(s); body: `{x, y, layers, learningRate, epochs, activation, model}` (`activation`: `sigmoid` (default), `tanh`, or `relu`; `model`: `lr`, `nn`, or default `both`); returns `{id}` |
+| `GET /api/jobs/:id`          | Recover the latest status, loss, and results                                                                                                                                                                |
+| `POST /api/jobs/:id/cancel`  | Cancel an active run                                                                                                                                                                                        |
+| `POST /api/jobs/:id/predict` | Evaluate both models; body: `{x, model}` (model optional)                                                                                                                                                   |
 
 WebSocket `/ws` events: `session`, `progress`, `completed`, `failed`, `cancelled`. Job events include `id`. The former `/api/lr_*` and `/api/nn_train_predict` HTTP routes have been replaced by this unified job API.
 

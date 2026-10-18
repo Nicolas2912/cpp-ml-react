@@ -41,6 +41,7 @@ export default function usePlayground() {
   const [nnLayerInput, setLayers] = useState("1-4-1");
   const [nnLearningRateInput, setRate] = useState("0.01");
   const [nnEpochsInput, setEpochs] = useState("1000");
+  const [nnActivation, setActivation] = useState("sigmoid");
   const [lrModel, setLrModel] = useState(null);
   const [nnModel, setNnModel] = useState(null);
   const [trainingMode, setTrainingMode] = useState("both");
@@ -131,6 +132,10 @@ export default function usePlayground() {
     invalidate(false);
     setEpochs(value);
   };
+  const setNnActivation = (value) => {
+    invalidate(false);
+    setActivation(value);
+  };
   const toggleTheme = () => {
     const next = isDark ? "light" : "dark";
     setActiveTheme(next);
@@ -189,6 +194,7 @@ export default function usePlayground() {
       layers: nnLayerInput,
       learningRate: Number(nnLearningRateInput),
       epochs: Number(nnEpochsInput),
+      activation: nnActivation,
     });
   };
   const predictFor = async (model, value) => {
@@ -355,6 +361,8 @@ export default function usePlayground() {
     setNnLearningRateInput,
     nnEpochsInput,
     setNnEpochsInput,
+    nnActivation,
+    setNnActivation,
     lrModel,
     nnModel,
     lrSlope: lrModel?.slope,

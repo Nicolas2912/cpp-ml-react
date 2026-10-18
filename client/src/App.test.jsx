@@ -282,3 +282,14 @@ test("ignores other jobs and old snapshots; safely parses architectures and smal
   expect(graph.nodes).toHaveLength(9);
   expect(graph.edges).toHaveLength(19);
 });
+
+test("sends the chosen hidden activation with NN training", async () => {
+  boot();
+  fireEvent.click(screen.getByRole("button", { name: "Neural Network" }));
+  expect(screen.getByLabelText("Hidden activation")).toHaveValue("sigmoid");
+  fireEvent.change(screen.getByLabelText("Hidden activation"), {
+    target: { value: "relu" },
+  });
+  await start("Compare both models");
+  expect(JSON.parse(fetch.mock.calls[0][1].body).activation).toBe("relu");
+});
