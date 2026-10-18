@@ -136,6 +136,27 @@ int main() {
                           "printUsage prints usage header");
     }
 
+    {
+        TrainingOptions options;
+        for (const char* option : {"weight_decay=0.25", "patience=300", "optimizer=adam", "batch=16"}) {
+            parseTrainingOption(option, options);
+        }
+        runner.expectTrue(options.weight_decay == 0.25 && options.patience == 300 &&
+                              options.optimizer == Optimizer::Adam && options.batch_size == 16,
+                          "parseTrainingOption reads every key=value option");
+        TrainingOptions defaults;
+        runner.expectTrue(defaults.weight_decay == 0 && defaults.patience == 0 &&
+                              defaults.optimizer == Optimizer::SGD && defaults.batch_size == 1,
+                          "training options default to plain per-sample SGD");
+    }
+    for (const char* bad : {"weight_decay=1.5", "weight_decay=-0.1", "patience=1.5", "patience=-1", "batch=0",
+                            "batch=2.5", "optimizer=rmsprop", "momentum=0.9", "patience", "batch=1,2"}) {
+        runner.expectThrows(std::string("parseTrainingOption rejects ") + bad, [bad] {
+            TrainingOptions options;
+            parseTrainingOption(bad, options);
+        });
+    }
+
     runner.expectThrows("rejects missing numeric token", [] { parseVector("1,,2"); });
     runner.expectThrows("rejects trailing delimiter", [] { parseVector("1,2,"); });
     runner.expectThrows("rejects non-finite input", [] { parseVector("1,nan"); });

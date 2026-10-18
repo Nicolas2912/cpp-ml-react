@@ -19,6 +19,24 @@ enum class Activation { Sigmoid, Tanh, ReLU };
 Activation parse_activation(const std::string& name);
 std::string activation_name(Activation activation);
 
+// SGD updates after every mini-batch with the averaged gradient. Adam keeps running
+// averages of the gradient and its square (beta1 0.9, beta2 0.999, epsilon 1e-8).
+enum class Optimizer { SGD, Adam };
+
+// Parse "sgd" or "adam"; throws std::invalid_argument otherwise.
+Optimizer parse_optimizer(const std::string& name);
+std::string optimizer_name(Optimizer optimizer);
+
+// Outcome of a training run. With a validation set, the network tracks the epoch with the
+// lowest validation MSE; with early stopping it also restores the weights from that epoch.
+struct TrainingSummary {
+    Vector predictions;               // Training-set predictions from the final weights
+    int epochs_run = 0;               // Epochs actually completed (fewer if stopped early)
+    int best_epoch = 0;               // Epoch with the lowest validation MSE (0 without validation)
+    double best_validation_mse = NAN; // Validation MSE at best_epoch
+    bool stopped_early = false;
+};
+
 class NeuralNetwork {
 public:
     // Constructor: specifies the number of neurons in each layer (including input and output)
@@ -40,6 +58,33 @@ public:
         int epochs,
         int report_every_n_epochs = 10 // Report every 10 epochs by default
     );
+
+    // Train with optional validation data. Validation MSE is measured after every epoch.
+    // patience > 0 enables early stopping: training ends once validation MSE has not improved
+    // for `patience` epochs, and the weights from the best validation epoch are restored.
+    TrainingSummary fit(
+        const std::vector<Vector>& inputs,
+        const std::vector<Vector>& targets,
+        int epochs,
+        int report_every_n_epochs,
+        const std::vector<Vector>& validation_inputs,
+        const std::vector<Vector>& validation_targets,
+        int patience = 0
+    );
+
+    // Weight decay on W (biases are not decayed); 0, the default, disables it. With SGD this is
+    // an L2 penalty: each step follows the gradient of the batch mean of
+    // 0.5 * (prediction - target)^2 plus 0.5 * weight_decay * sum(W^2). With Adam it is decoupled
+    // weight decay (AdamW): W shrinks by learning_rate * weight_decay * W outside the adaptive update.
+    void set_weight_decay(double weight_decay);
+    double weight_decay() const { return weight_decay_; }
+
+    // Choose the optimizer and mini-batch size (1 = one update per sample, the default).
+    // Batches larger than the dataset use the full dataset. Resets Adam's moment estimates.
+    void set_optimizer(Optimizer optimizer, size_t batch_size = 1);
+
+    // Mean squared error of the network over a dataset
+    double dataset_mse(const std::vector<Vector>& inputs, const std::vector<Vector>& targets);
 
     void save(std::ostream& out) const;
     static NeuralNetwork load(std::istream& in);
@@ -68,8 +113,18 @@ private:
 
     // --- Training Parameters ---
     double learning_rate_;
+    double weight_decay_ = 0.0;
     std::mt19937 generator_;
     Activation activation_;
+    Optimizer optimizer_ = Optimizer::SGD;
+    size_t batch_size_ = 1;
+
+    // --- Optimizer State ---
+    std::vector<Matrix> grad_weights_; // Gradients summed over the current mini-batch
+    std::vector<Vector> grad_biases_;
+    std::vector<Matrix> adam_m_weights_, adam_v_weights_; // Adam first and second moments
+    std::vector<Vector> adam_m_biases_, adam_v_biases_;
+    long adam_step_ = 0;
 
     // --- Internal State (for backpropagation) ---
     std::vector<Vector> layer_outputs_; // Stores outputs of each layer during forward pass (including input)
@@ -82,8 +137,14 @@ private:
     // Perform the forward pass calculation
     Vector forward_pass(const Vector& input);
 
-    // Perform the backpropagation calculation and update weights/biases
+    // Perform the backpropagation calculation and update weights/biases from one sample
     void backpropagate(const Vector& input, const Vector& target);
+
+    // Add one sample's loss gradient to the mini-batch accumulators
+    void accumulate_gradients(const Vector& input, const Vector& target);
+
+    // Apply the optimizer step for the averaged gradient of `count` samples, then reset it
+    void apply_gradients(size_t count);
 
     // --- Matrix/Vector Operations (Basic implementations) ---
     // These could be replaced by a dedicated linear algebra library for performance

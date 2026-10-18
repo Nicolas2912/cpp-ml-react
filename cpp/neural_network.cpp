@@ -22,6 +22,16 @@ std::string activation_name(Activation activation) {
     }
 }
 
+Optimizer parse_optimizer(const std::string& name) {
+    if (name == "sgd") return Optimizer::SGD;
+    if (name == "adam") return Optimizer::Adam;
+    throw std::invalid_argument("Unknown optimizer '" + name + "' (expected sgd or adam).");
+}
+
+std::string optimizer_name(Optimizer optimizer) {
+    return optimizer == Optimizer::Adam ? "adam" : "sgd";
+}
+
 NeuralNetwork::NeuralNetwork(const std::vector<size_t>& layer_sizes, double learning_rate, unsigned seed,
                              Activation activation)
     : layer_sizes_(layer_sizes), learning_rate_(learning_rate), generator_(seed), activation_(activation) {
@@ -44,6 +54,8 @@ void NeuralNetwork::initialize_weights_biases() {
 
     weights_.resize(layer_sizes_.size() - 1);
     biases_.resize(layer_sizes_.size() - 1);
+    grad_weights_.resize(layer_sizes_.size() - 1);
+    grad_biases_.resize(layer_sizes_.size() - 1);
 
     for (size_t i = 0; i < layer_sizes_.size() - 1; ++i) {
         size_t rows = layer_sizes_[i + 1]; // Neurons in current layer
@@ -56,6 +68,8 @@ void NeuralNetwork::initialize_weights_biases() {
         std::uniform_real_distribution<> xavier_dis(-xavier_limit, xavier_limit);
 
         weights_[i].resize(rows, Vector(cols));
+        grad_weights_[i].assign(rows, Vector(cols, 0.0));
+        grad_biases_[i].assign(rows, 0.0);
         for (size_t r = 0; r < rows; ++r) {
             for (size_t c = 0; c < cols; ++c) {
                 switch (activation_) {
@@ -191,7 +205,7 @@ Vector NeuralNetwork::predict(const Vector& input) {
 }
 
 
-void NeuralNetwork::backpropagate(const Vector& input, const Vector& target) {
+void NeuralNetwork::accumulate_gradients(const Vector& input, const Vector& target) {
     // 1. Perform forward pass to get activations and pre-activation inputs
     Vector predicted_output = forward_pass(input); // This also populates layer_outputs_ and layer_inputs_
 
@@ -225,23 +239,110 @@ void NeuralNetwork::backpropagate(const Vector& input, const Vector& target) {
         deltas[i - 1] = elementwise_multiply(propagated_delta, activation_deriv);
     }
 
-    // 4. Update weights and biases using calculated deltas
+    // 4. Add this sample's gradients: grad_W_l = delta_l * a_{l-1}^T, grad_b_l = delta_l
     for (size_t i = 0; i < num_layers - 1; ++i) {
         const Vector& current_delta = deltas[i];
         const Vector& prev_layer_output = layer_outputs_[i]; // Activation from the previous layer
-
-        // Calculate gradients
-        // grad_W_l = delta_l * a_{l-1}^T
-        Matrix grad_W = outer_product(current_delta, prev_layer_output);
-        // grad_b_l = delta_l
-        Vector grad_b = current_delta; // Bias gradient is just the delta
-
-        // Update weights: W = W - learning_rate * grad_W
-        weights_[i] = subtract(weights_[i], multiply(grad_W, learning_rate_));
-
-        // Update biases: b = b - learning_rate * grad_b
-        biases_[i] = subtract(biases_[i], multiply(grad_b, learning_rate_));
+        for (size_t r = 0; r < weights_[i].size(); ++r) {
+            for (size_t c = 0; c < weights_[i][r].size(); ++c) {
+                const double grad = current_delta[r] * prev_layer_output[c];
+                grad_weights_[i][r][c] += grad;
+            }
+            grad_biases_[i][r] += current_delta[r];
+        }
     }
+}
+
+void NeuralNetwork::backpropagate(const Vector& input, const Vector& target) {
+    accumulate_gradients(input, target);
+    apply_gradients(1);
+}
+
+void NeuralNetwork::apply_gradients(size_t count) {
+    // Keeping each product in its own statement stops clang's default FP contraction from fusing
+    // them into FMAs, so SGD with batch size 1 and no weight decay matches the original engine bit for bit.
+    const double beta1 = 0.9, beta2 = 0.999, epsilon = 1e-8;
+    double step_size = learning_rate_, correction2 = 1.0;
+    if (optimizer_ == Optimizer::Adam) {
+        if (adam_m_weights_.empty()) {
+            adam_m_weights_ = adam_v_weights_ = grad_weights_;
+            adam_m_biases_ = adam_v_biases_ = grad_biases_;
+            for (auto* layers : {&adam_m_weights_, &adam_v_weights_})
+                for (auto& layer : *layers) for (auto& row : layer) std::fill(row.begin(), row.end(), 0.0);
+            for (auto* layers : {&adam_m_biases_, &adam_v_biases_})
+                for (auto& layer : *layers) std::fill(layer.begin(), layer.end(), 0.0);
+        }
+        ++adam_step_;
+        step_size = learning_rate_ / (1.0 - std::pow(beta1, static_cast<double>(adam_step_)));
+        correction2 = std::sqrt(1.0 - std::pow(beta2, static_cast<double>(adam_step_)));
+    }
+    // Adam step: m_hat / (sqrt(v_hat) + epsilon), written with the bias corrections folded in.
+    auto adam = [&](double grad, double& m, double& v) {
+        m = beta1 * m + (1.0 - beta1) * grad;
+        v = beta2 * v + (1.0 - beta2) * grad * grad;
+        const double denominator = std::sqrt(v) / correction2 + epsilon;
+        return step_size * (m / denominator);
+    };
+    const double scale = 1.0 / count;
+    for (size_t i = 0; i < weights_.size(); ++i) {
+        for (size_t r = 0; r < weights_[i].size(); ++r) {
+            for (size_t c = 0; c < weights_[i][r].size(); ++c) {
+                double& weight = weights_[i][r][c];
+                double grad = count == 1 ? grad_weights_[i][r][c] : grad_weights_[i][r][c] * scale;
+                grad_weights_[i][r][c] = 0.0;
+                if (optimizer_ == Optimizer::SGD) {
+                    if (weight_decay_ > 0) {
+                        const double decay = weight_decay_ * weight;
+                        grad += decay;
+                    }
+                    const double step = grad * learning_rate_;
+                    weight -= step;
+                } else {
+                    const double decay = learning_rate_ * weight_decay_ * weight; // AdamW: decoupled decay
+                    weight -= adam(grad, adam_m_weights_[i][r][c], adam_v_weights_[i][r][c]) + decay;
+                }
+            }
+            double grad = count == 1 ? grad_biases_[i][r] : grad_biases_[i][r] * scale;
+            grad_biases_[i][r] = 0.0;
+            if (optimizer_ == Optimizer::SGD) {
+                const double bias_step = grad * learning_rate_;
+                biases_[i][r] -= bias_step;
+            } else {
+                biases_[i][r] -= adam(grad, adam_m_biases_[i][r], adam_v_biases_[i][r]);
+            }
+        }
+    }
+}
+
+void NeuralNetwork::set_optimizer(Optimizer optimizer, size_t batch_size) {
+    if (batch_size == 0 || batch_size > 10000) {
+        throw std::invalid_argument("Batch size must be between 1 and 10000.");
+    }
+    optimizer_ = optimizer;
+    batch_size_ = batch_size;
+    adam_m_weights_.clear();
+    adam_v_weights_.clear();
+    adam_m_biases_.clear();
+    adam_v_biases_.clear();
+    adam_step_ = 0;
+}
+
+void NeuralNetwork::set_weight_decay(double weight_decay) {
+    if (!std::isfinite(weight_decay) || weight_decay < 0 || weight_decay > 1) {
+        throw std::invalid_argument("Weight decay must be between 0 and 1.");
+    }
+    weight_decay_ = weight_decay;
+}
+
+double NeuralNetwork::dataset_mse(const std::vector<Vector>& inputs, const std::vector<Vector>& targets) {
+    if (inputs.empty() || inputs.size() != targets.size()) {
+        throw std::invalid_argument("Input and target datasets must be non-empty and have the same size.");
+    }
+    double total = 0.0;
+    for (size_t i = 0; i < inputs.size(); ++i) {
+        total += mean_squared_error(predict(inputs[i]), targets[i]);
+    }
+    return total / inputs.size();
 }
 
 
@@ -259,63 +360,96 @@ Vector NeuralNetwork::train_for_epochs(
     int epochs,
     int report_every_n_epochs
 ) {
+    return fit(inputs, targets, epochs, report_every_n_epochs, {}, {}).predictions;
+}
+
+TrainingSummary NeuralNetwork::fit(
+    const std::vector<Vector>& inputs,
+    const std::vector<Vector>& targets,
+    int epochs,
+    int report_every_n_epochs,
+    const std::vector<Vector>& validation_inputs,
+    const std::vector<Vector>& validation_targets,
+    int patience
+) {
     if (epochs <= 0 || epochs > 10000 || report_every_n_epochs <= 0) {
         throw std::invalid_argument("Invalid epoch count or reporting interval.");
     }
     if (inputs.empty() || inputs.size() != targets.size()) {
         throw std::invalid_argument("Input and target datasets must be non-empty and have the same size.");
     }
+    if (validation_inputs.size() != validation_targets.size()) {
+        throw std::invalid_argument("Validation inputs and targets must have the same size.");
+    }
+    const bool validate = !validation_inputs.empty();
+    if (patience < 0 || patience > 10000 || (patience > 0 && !validate)) {
+        throw std::invalid_argument("Early stopping needs validation data and a patience of 1 to 10000 epochs.");
+    }
 
     size_t n_samples = inputs.size();
     std::vector<size_t> indices(n_samples);
     std::iota(indices.begin(), indices.end(), 0);
 
+    TrainingSummary summary;
+    std::vector<Matrix> best_weights;
+    std::vector<Vector> best_biases;
 
-    Vector final_predictions;
-    final_predictions.reserve(n_samples);
-
-    for (int epoch = 0; epoch < epochs; ++epoch) {
+    for (int epoch = 1; epoch <= epochs; ++epoch) {
         // Shuffle data for stochasticity (optional but often good)
         std::shuffle(indices.begin(), indices.end(), generator_);
 
-        // Train on each sample in the (shuffled) dataset
-        for (size_t i = 0; i < n_samples; ++i) {
-            size_t idx = indices[i];
-            // Simple stochastic gradient descent (one sample at a time)
-            backpropagate(inputs[idx], targets[idx]);
-            // Note: For larger datasets, mini-batch gradient descent is more common
+        // One optimizer step per mini-batch, using the batch's average gradient
+        for (size_t start = 0; start < n_samples; start += batch_size_) {
+            const size_t end = std::min(n_samples, start + batch_size_);
+            for (size_t i = start; i < end; ++i) {
+                accumulate_gradients(inputs[indices[i]], targets[indices[i]]);
+            }
+            apply_gradients(end - start);
+        }
+        summary.epochs_run = epoch;
+
+        double validation_mse = NAN;
+        if (validate) {
+            validation_mse = dataset_mse(validation_inputs, validation_targets);
+            if (!std::isfinite(validation_mse)) {
+                throw std::runtime_error("Training diverged. Try a smaller learning rate.");
+            }
+            if (summary.best_epoch == 0 || validation_mse < summary.best_validation_mse) {
+                summary.best_epoch = epoch;
+                summary.best_validation_mse = validation_mse;
+                if (patience > 0) {
+                    best_weights = weights_;
+                    best_biases = biases_;
+                }
+            }
+            summary.stopped_early = patience > 0 && epoch - summary.best_epoch >= patience && epoch < epochs;
         }
 
-        // Report loss periodically
-        if ((epoch + 1) % report_every_n_epochs == 0 || epoch == epochs - 1) {
-            double current_mse = 0.0;
-            // Calculate MSE over the *entire* dataset
-            for (size_t i = 0; i < n_samples; ++i) {
-                 // Use predict, not forward_pass, as we don't need intermediate state here
-                Vector prediction = predict(inputs[i]);
-                current_mse += mean_squared_error(prediction, targets[i]);
-            }
-            current_mse /= n_samples;
+        // Report loss periodically, on the last epoch, and when stopping early
+        if (epoch % report_every_n_epochs == 0 || epoch == epochs || summary.stopped_early) {
+            const double current_mse = dataset_mse(inputs, targets);
             if (!std::isfinite(current_mse)) {
                 throw std::runtime_error("Training diverged. Try a smaller learning rate.");
             }
-            std::cout << "epoch=" << (epoch + 1) << ",mse=" << current_mse << std::endl;
+            std::cout << "epoch=" << epoch << ",mse=" << current_mse;
+            if (validate) std::cout << ",val_mse=" << validation_mse;
+            std::cout << std::endl;
         }
+        if (summary.stopped_early) break;
     }
 
-    // After training, calculate final predictions for the entire input set
-    final_predictions.clear();
-    for(const auto& input : inputs) {
-        Vector prediction = predict(input);
-        // Assuming single output neuron for simplicity based on frontend
-        if (!prediction.empty()) {
-            final_predictions.push_back(prediction[0]);
-        } else {
-            final_predictions.push_back(NAN); // Indicate error if prediction failed
-        }
+    if (patience > 0) {
+        weights_ = best_weights;
+        biases_ = best_biases;
     }
 
-    return final_predictions;
+    // Predictions for the training set from the final (possibly restored) weights.
+    // Assuming a single output neuron, matching the frontend.
+    summary.predictions.reserve(n_samples);
+    for (const auto& input : inputs) {
+        summary.predictions.push_back(predict(input)[0]);
+    }
+    return summary;
 }
 
 
