@@ -82,7 +82,15 @@ class Jobs {
     }
 
     async train(job) {
-        const { x, y, layers, learningRate, epochs, model = "both" } = job.data;
+        const {
+            x,
+            y,
+            layers,
+            learningRate,
+            epochs,
+            activation = "sigmoid",
+            model = "both",
+        } = job.data;
         const split = splitData(x, y);
         const trainX = split.train.map((point) => point.x);
         const trainY = split.train.map((point) => point.y);
@@ -100,7 +108,14 @@ class Jobs {
             job.model = { sx, sy };
             job.result = {
                 split,
-                settings: { layers, learningRate, epochs, seed: 42, model },
+                settings: {
+                    layers,
+                    learningRate,
+                    epochs,
+                    activation,
+                    seed: 42,
+                    model,
+                },
                 lr: null,
                 nn: null,
             };
@@ -138,6 +153,7 @@ class Jobs {
                         layers,
                         String(learningRate),
                         String(epochs),
+                        activation,
                     ],
                     `${trainX.map((value) => scale(value, sx))}\n${trainY.map((value) => scale(value, sy))}\n${evaluationX.map((value) => scale(value, sx))}\n`,
                     {

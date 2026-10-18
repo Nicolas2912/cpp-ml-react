@@ -281,3 +281,32 @@ test("original two-point and five-point datasets remain supported with honest te
         else assert.equal(state.result.lr.test.mse, 0);
     }
 });
+
+test("each hidden activation trains and predicts through the reloaded model", async (t) => {
+    const app = await setup(t);
+    const owner = await app.connect();
+    for (const activation of ["sigmoid", "tanh", "relu"]) {
+        const created = await owner.request("/jobs", {
+            ...data,
+            model: "nn",
+            activation,
+        });
+        assert.equal(created.status, 202);
+        const state = await waitFor(owner, created.body.id);
+        assert.equal(state.result.settings.activation, activation);
+        // y = x^2 + 10 over [-3, 3]: a working network beats predicting the mean (variance ~ 6.5).
+        assert.ok(
+            state.result.nn.train.mse < 1,
+            `${activation} train MSE ${state.result.nn.train.mse}`,
+        );
+        const prediction = await owner.request(`/jobs/${state.id}/predict`, {
+            x: 0,
+            model: "nn",
+        });
+        assert.equal(prediction.status, 200);
+        assert.ok(
+            Math.abs(prediction.body.nn - 10) < 1.5,
+            `${activation} predicts ${prediction.body.nn} at x=0`,
+        );
+    }
+});

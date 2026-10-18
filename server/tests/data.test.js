@@ -23,6 +23,8 @@ test("rejects malformed data and excessive training work", () => {
         { ...dataset, y: dataset.y.map(() => "1") },
         { ...dataset, epochs: 1.5 },
         { ...dataset, epochs: 10001 },
+        { ...dataset, activation: "softmax" },
+        { ...dataset, activation: 1 },
         { ...dataset, learningRate: 0 },
         { ...dataset, learningRate: Infinity },
         { ...dataset, layers: "1--8-1" },
@@ -57,4 +59,14 @@ test("scalers use training values only and restore original-unit error", () => {
     });
     assert.equal(metrics([{ y: 5 }, { y: 5 }], [5, 5]).r2, null);
     assert.throws(() => metrics([{ y: 1 }], [Infinity]));
+});
+
+test("defaults the activation to sigmoid and accepts tanh and relu", () => {
+    assert.equal(validateDataset(dataset).activation, "sigmoid");
+    for (const activation of ["tanh", "relu"]) {
+        assert.equal(
+            validateDataset({ ...dataset, activation }).activation,
+            activation,
+        );
+    }
 });

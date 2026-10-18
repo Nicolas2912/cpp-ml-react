@@ -5,6 +5,8 @@ const LIMITS = Object.freeze({
     work: 5e7,
 });
 
+const ACTIVATIONS = Object.freeze(["sigmoid", "tanh", "relu"]);
+
 function validateDataset(body) {
     const {
         x,
@@ -13,6 +15,7 @@ function validateDataset(body) {
         layers = "1-8-1",
         learningRate = 0.3,
         epochs = 3000,
+        activation = "sigmoid",
     } = body || {};
     if (
         !Array.isArray(x) ||
@@ -60,6 +63,8 @@ function validateDataset(body) {
     }
     if (!Number.isInteger(epochs) || epochs < 1 || epochs > LIMITS.epochs)
         throw new Error("Use 1 to 10,000 epochs.");
+    if (!ACTIVATIONS.includes(activation))
+        throw new Error("Choose a sigmoid, tanh, or relu activation.");
     const parameters = sizes
         .slice(1)
         .reduce((total, size, i) => total + size * (sizes[i] + 1), 0);
@@ -67,7 +72,15 @@ function validateDataset(body) {
         throw new Error(
             "This run is too large. Reduce points, neurons, or epochs.",
         );
-    return { x: [...x], y: [...y], layers, learningRate, epochs, model };
+    return {
+        x: [...x],
+        y: [...y],
+        layers,
+        learningRate,
+        epochs,
+        activation,
+        model,
+    };
 }
 
 function splitData(x, y) {
