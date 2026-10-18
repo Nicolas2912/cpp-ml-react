@@ -59,7 +59,7 @@ void printVector(const Vector& values) {
 
 void printUsage(const char* name) {
     std::cerr << "Usage: " << name << " lr_train | lr_predict <slope> <intercept> <x> | "
-              << "nn_train_predict <layers> <learning-rate> <epochs> | nn_predict\n"
+              << "nn_train_predict <layers> <learning-rate> <epochs> [sigmoid|tanh|relu] | nn_predict\n"
               << "Training reads X and Y CSV lines; NN training optionally reads evaluation X.\n"
               << "nn_predict reads a serialized model line followed by an X CSV line.\n";
 }
@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
             std::cout << '\n';
             return 0;
         }
-        if (!((operation == "lr_train" && argc == 2) || (operation == "nn_train_predict" && argc == 5))) {
+        if (!((operation == "lr_train" && argc == 2) || (operation == "nn_train_predict" && (argc == 5 || argc == 6)))) {
             throw std::invalid_argument("Invalid operation or arguments.");
         }
         const Vector x = readAndParseVectorFromStdin();
@@ -111,7 +111,8 @@ int main(int argc, char** argv) {
                 epoch_values[0] > 10000 || std::floor(epoch_values[0]) != epoch_values[0]) {
                 throw std::invalid_argument("Invalid training parameters.");
             }
-            NeuralNetwork model(layers, rate_values[0]);
+            const Activation activation = argc == 6 ? parse_activation(argv[5]) : Activation::Sigmoid;
+            NeuralNetwork model(layers, rate_values[0], 42, activation);
             std::vector<Vector> inputs, targets;
             for (size_t i = 0; i < x.size(); ++i) { inputs.push_back({x[i]}); targets.push_back({y[i]}); }
             const int epochs = static_cast<int>(epoch_values[0]);

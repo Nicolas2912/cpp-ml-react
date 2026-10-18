@@ -1,6 +1,7 @@
 #ifndef NEURAL_NETWORK_H
 #define NEURAL_NETWORK_H
 
+#include <string>
 #include <vector>
 #include <cmath>
 #include <random>
@@ -11,11 +12,20 @@
 using Matrix = std::vector<std::vector<double>>;
 using Vector = std::vector<double>;
 
+// Activation applied to every hidden layer. The output layer is always linear.
+enum class Activation { Sigmoid, Tanh, ReLU };
+
+// Parse "sigmoid", "tanh" or "relu"; throws std::invalid_argument otherwise.
+Activation parse_activation(const std::string& name);
+std::string activation_name(Activation activation);
+
 class NeuralNetwork {
 public:
     // Constructor: specifies the number of neurons in each layer (including input and output)
     // Example: {2, 3, 1} means 2 input neurons, 3 hidden neurons, 1 output neuron
-    NeuralNetwork(const std::vector<size_t>& layer_sizes, double learning_rate = 0.01, unsigned seed = 42);
+    // Sigmoid keeps the original small uniform init; tanh uses Xavier/Glorot and ReLU uses He init.
+    NeuralNetwork(const std::vector<size_t>& layer_sizes, double learning_rate = 0.01, unsigned seed = 42,
+                  Activation activation = Activation::Sigmoid);
 
     // Predict the output for a given input vector
     Vector predict(const Vector& input);
@@ -39,6 +49,9 @@ public:
     static double sigmoid(double x);
     // Derivative of the sigmoid function
     static double sigmoid_derivative(double x);
+    // Apply the given activation (or its derivative) to a pre-activation value z
+    static double activate(double z, Activation activation);
+    static double activate_derivative(double z, Activation activation);
 
     // --- Loss Function ---
     // Mean Squared Error (for a single output vector)
@@ -56,6 +69,7 @@ private:
     // --- Training Parameters ---
     double learning_rate_;
     std::mt19937 generator_;
+    Activation activation_;
 
     // --- Internal State (for backpropagation) ---
     std::vector<Vector> layer_outputs_; // Stores outputs of each layer during forward pass (including input)

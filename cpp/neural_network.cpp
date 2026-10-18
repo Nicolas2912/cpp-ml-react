@@ -6,8 +6,25 @@
 #include <limits>
 #include <numeric>      // For std::inner_product
 
-NeuralNetwork::NeuralNetwork(const std::vector<size_t>& layer_sizes, double learning_rate, unsigned seed)
-    : layer_sizes_(layer_sizes), learning_rate_(learning_rate), generator_(seed) {
+Activation parse_activation(const std::string& name) {
+    if (name == "sigmoid") return Activation::Sigmoid;
+    if (name == "tanh") return Activation::Tanh;
+    if (name == "relu") return Activation::ReLU;
+    throw std::invalid_argument("Unknown activation '" + name + "' (expected sigmoid, tanh or relu).");
+}
+
+std::string activation_name(Activation activation) {
+    switch (activation) {
+        case Activation::Tanh: return "tanh";
+        case Activation::ReLU: return "relu";
+        case Activation::Sigmoid:
+        default: return "sigmoid";
+    }
+}
+
+NeuralNetwork::NeuralNetwork(const std::vector<size_t>& layer_sizes, double learning_rate, unsigned seed,
+                             Activation activation)
+    : layer_sizes_(layer_sizes), learning_rate_(learning_rate), generator_(seed), activation_(activation) {
     if (layer_sizes_.size() < 2) {
         throw std::invalid_argument("Network must have at least an input and an output layer.");
     }
@@ -21,8 +38,7 @@ NeuralNetwork::NeuralNetwork(const std::vector<size_t>& layer_sizes, double lear
 }
 
 void NeuralNetwork::initialize_weights_biases() {
-    // He initialization recommended for ReLU, Xavier/Glorot for sigmoid/tanh
-    // Using a simple small random range for now
+    // Sigmoid keeps the original small uniform range so seeded results stay unchanged.
     std::uniform_real_distribution<> dis(-0.5, 0.5); // Distribution for weights
     std::uniform_real_distribution<> bias_dis(0.0, 0.1); // Small positive biases often start well
 
@@ -33,18 +49,33 @@ void NeuralNetwork::initialize_weights_biases() {
         size_t rows = layer_sizes_[i + 1]; // Neurons in current layer
         size_t cols = layer_sizes_[i];     // Neurons in previous layer
 
-        // Initialize weights
+        // He (normal, std = sqrt(2 / fan_in)) for ReLU, Xavier/Glorot (uniform,
+        // limit = sqrt(6 / (fan_in + fan_out))) for tanh.
+        std::normal_distribution<> he_dis(0.0, std::sqrt(2.0 / cols));
+        const double xavier_limit = std::sqrt(6.0 / (cols + rows));
+        std::uniform_real_distribution<> xavier_dis(-xavier_limit, xavier_limit);
+
         weights_[i].resize(rows, Vector(cols));
         for (size_t r = 0; r < rows; ++r) {
             for (size_t c = 0; c < cols; ++c) {
-                weights_[i][r][c] = dis(generator_) * sqrt(1.0 / cols); // Scaled initialization
+                switch (activation_) {
+                    case Activation::ReLU: weights_[i][r][c] = he_dis(generator_); break;
+                    case Activation::Tanh: weights_[i][r][c] = xavier_dis(generator_); break;
+                    case Activation::Sigmoid:
+                    default: weights_[i][r][c] = dis(generator_) * sqrt(1.0 / cols); break;
+                }
             }
         }
 
-        // Initialize biases
+        // ReLU starts with a small positive bias so fewer units begin "dead"; tanh starts at zero.
         biases_[i].resize(rows);
         for (size_t r = 0; r < rows; ++r) {
-            biases_[i][r] = bias_dis(generator_);
+            switch (activation_) {
+                case Activation::ReLU: biases_[i][r] = 0.01; break;
+                case Activation::Tanh: biases_[i][r] = 0.0; break;
+                case Activation::Sigmoid:
+                default: biases_[i][r] = bias_dis(generator_); break;
+            }
         }
     }
 }
@@ -56,6 +87,27 @@ double NeuralNetwork::sigmoid(double x) {
 double NeuralNetwork::sigmoid_derivative(double x) {
     double sig = sigmoid(x);
     return sig * (1.0 - sig);
+}
+
+double NeuralNetwork::activate(double z, Activation activation) {
+    switch (activation) {
+        case Activation::Tanh: return std::tanh(z);
+        case Activation::ReLU: return z > 0.0 ? z : 0.0;
+        case Activation::Sigmoid:
+        default: return sigmoid(z);
+    }
+}
+
+double NeuralNetwork::activate_derivative(double z, Activation activation) {
+    switch (activation) {
+        case Activation::Tanh: {
+            double t = std::tanh(z);
+            return 1.0 - t * t;
+        }
+        case Activation::ReLU: return z > 0.0 ? 1.0 : 0.0;
+        case Activation::Sigmoid:
+        default: return sigmoid_derivative(z);
+    }
 }
 
 double NeuralNetwork::mean_squared_error(const Vector& predicted, const Vector& target) {
@@ -103,8 +155,10 @@ Vector NeuralNetwork::forward_pass(const Vector& input) {
 
         // Calculate activation (sigmoid for hidden, linear for output)
         current_output.resize(z.size());
-        if (i < num_hidden_layers) { // Apply sigmoid to hidden layers (layers 0 to num_hidden_layers-1)
-             std::transform(z.begin(), z.end(), current_output.begin(), sigmoid);
+        if (i < num_hidden_layers) { // Apply the hidden activation (layers 0 to num_hidden_layers-1)
+            const Activation activation = activation_;
+            std::transform(z.begin(), z.end(), current_output.begin(),
+                           [activation](double v) { return activate(v, activation); });
         } else { // Apply linear activation (identity) to output layer (layer num_hidden_layers)
              current_output = z; // a = z
         }
@@ -125,8 +179,10 @@ Vector NeuralNetwork::predict(const Vector& input) {
     for (size_t i = 0; i < num_layers - 1; ++i) {
         Vector z = add(multiply(weights_[i], current_output), biases_[i]);
         current_output.resize(z.size());
-        if (i < num_layers - 2) { // Apply sigmoid to hidden layers
-             std::transform(z.begin(), z.end(), current_output.begin(), sigmoid);
+        if (i < num_layers - 2) { // Apply the hidden activation
+            const Activation activation = activation_;
+            std::transform(z.begin(), z.end(), current_output.begin(),
+                           [activation](double v) { return activate(v, activation); });
         } else { // Apply linear activation (identity) to output layer
              current_output = z; // a = z
         }
@@ -156,15 +212,17 @@ void NeuralNetwork::backpropagate(const Vector& input, const Vector& target) {
 
     // 3. Propagate deltas backwards from L-1 to layer 1
     for (int i = num_layers - 2; i > 0; --i) { // Note: int for loop condition
-        // delta_l = (W_{l+1}^T * delta_{l+1}) * sigmoid_derivative(z_l)
+        // delta_l = (W_{l+1}^T * delta_{l+1}) * activation'(z_l)
         Matrix W_T = transpose(weights_[i]); // Transpose weights of the layer *ahead*
         Vector propagated_delta = multiply(W_T, deltas[i]); // W^T * delta_next
 
         Vector layer_input = layer_inputs_[i-1]; // z_l is stored at index i-1
-        Vector sigmoid_deriv_hidden(layer_input.size());
-        std::transform(layer_input.begin(), layer_input.end(), sigmoid_deriv_hidden.begin(), sigmoid_derivative);
+        Vector activation_deriv(layer_input.size());
+        const Activation activation = activation_;
+        std::transform(layer_input.begin(), layer_input.end(), activation_deriv.begin(),
+                       [activation](double v) { return activate_derivative(v, activation); });
 
-        deltas[i - 1] = elementwise_multiply(propagated_delta, sigmoid_deriv_hidden);
+        deltas[i - 1] = elementwise_multiply(propagated_delta, activation_deriv);
     }
 
     // 4. Update weights and biases using calculated deltas
@@ -372,6 +430,7 @@ Vector NeuralNetwork::multiply(const Vector& vec, double scalar) {
 void NeuralNetwork::save(std::ostream& out) const {
     out << std::setprecision(17) << layer_sizes_.size();
     for (size_t size : layer_sizes_) out << " " << size;
+    out << " " << activation_name(activation_);
     for (size_t l = 0; l < weights_.size(); ++l) {
         for (const auto& row : weights_[l]) {
             for (double value : row) out << " " << value;
@@ -387,7 +446,9 @@ NeuralNetwork NeuralNetwork::load(std::istream& in) {
     for (auto& size : sizes) {
         if (!(in >> size) || size == 0 || size > 32) throw std::invalid_argument("Invalid model size.");
     }
-    NeuralNetwork model(sizes);
+    std::string activation;
+    if (!(in >> activation)) throw std::invalid_argument("Invalid model activation.");
+    NeuralNetwork model(sizes, 0.01, 42, parse_activation(activation));
     auto read_value = [&in](double& value) {
         if (!(in >> value) || !std::isfinite(value)) throw std::invalid_argument("Invalid model parameter.");
     };
