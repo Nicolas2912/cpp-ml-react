@@ -13,7 +13,11 @@ export function mergeUpdate(current, event) {
     if (current.status !== "running") return current;
     const loss = [
       ...current.loss.filter((point) => point.epoch !== event.epoch),
-      { epoch: event.epoch, mse: event.mse },
+      {
+        epoch: event.epoch,
+        mse: event.mse,
+        ...(event.valMse === undefined ? {} : { valMse: event.valMse }),
+      },
     ];
     return { ...current, loss: loss.sort((a, b) => a.epoch - b.epoch) };
   }
