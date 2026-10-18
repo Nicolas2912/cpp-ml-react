@@ -4,7 +4,7 @@ const { once } = require("node:events");
 const WebSocket = require("ws");
 const { createServer } = require("../server");
 const { runEngine, numbers } = require("../engine");
-const { scale, unscale } = require("../data");
+const { scale, unscale, scaler, splitSizes } = require("../data");
 
 async function setup(t, options = {}) {
     const app = createServer(options);
@@ -308,6 +308,124 @@ test("each hidden activation trains and predicts through the reloaded model", as
             Math.abs(prediction.body.nn - 10) < 1.5,
             `${activation} predicts ${prediction.body.nn} at x=0`,
         );
+    }
+});
+
+// A noisy sine like the client's "Noisy wave" sample: few points, so a wide network overfits.
+function noisyWave(count = 40, seed = 12) {
+    const x = [],
+        y = [];
+    for (let i = 0; i < count; i++) {
+        const value = -3 + (6 * i) / (count - 1);
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        x.push(value);
+        y.push(2 * Math.sin(value) + (seed / 4294967296 - 0.5) * 2.5);
+    }
+    return { x, y };
+}
+const lab = {
+    ...noisyWave(),
+    model: "nn",
+    layers: "1-16-16-1",
+    activation: "tanh",
+    optimizer: "adam",
+    batchSize: 1000,
+    learningRate: 0.02,
+    epochs: 1500,
+};
+const near = (a, b, message) =>
+    assert.ok(
+        Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(b)),
+        `${message}: ${a} vs ${b}`,
+    );
+
+test("network holds out validation points and streams validation loss", async (t) => {
+    const app = await setup(t);
+    const owner = await app.connect();
+    const created = await owner.request("/jobs", lab);
+    assert.equal(created.status, 202);
+    const state = await waitFor(owner, created.body.id);
+    const { split, nn, settings } = state.result;
+    assert.equal(split.validation.length, splitSizes(40).validation);
+    assert.equal(
+        split.fit.length + split.validation.length,
+        split.train.length,
+    );
+    const test = new Set(split.test.map((p) => p.index));
+    assert.ok(split.validation.every((p) => !test.has(p.index)));
+    assert.deepEqual(
+        [settings.optimizer, settings.batchSize, settings.patience],
+        ["adam", 1000, 0],
+    );
+    // Every progress point carries both curves; without early stopping the last one is the final model.
+    assert.ok(state.loss.length >= 100);
+    assert.ok(state.loss.every((p) => Number.isFinite(p.valMse)));
+    const progress = owner.events.filter((e) => e.type === "progress");
+    assert.ok(progress.every((e) => Number.isFinite(e.valMse)));
+    near(state.loss.at(-1).mse, nn.train.mse, "final training MSE");
+    near(state.loss.at(-1).valMse, nn.validation.mse, "final validation MSE");
+    assert.equal(nn.epochsRun, 1500);
+    assert.ok(nn.bestEpoch >= 1 && nn.bestEpoch <= 1500);
+    assert.equal(nn.stoppedEarly, false);
+    assert.equal(nn.restoredBest, false);
+    // The network's scalers come from the points it learns from, not from validation or test points.
+    const saved = app.jobs.owned(state.id, owner.token);
+    assert.deepEqual(saved.model.sx, scaler(split.fit.map((p) => p.x)));
+    assert.deepEqual(saved.model.sy, scaler(split.fit.map((p) => p.y)));
+});
+
+test("early stopping restores the best validation epoch through the real engine", async (t) => {
+    const app = await setup(t);
+    const owner = await app.connect();
+    const patience = 100;
+    const created = await owner.request("/jobs", {
+        ...lab,
+        epochs: 4000,
+        patience,
+    });
+    const state = await waitFor(owner, created.body.id);
+    const { nn } = state.result;
+    assert.equal(nn.stoppedEarly, true);
+    assert.equal(nn.restoredBest, true);
+    assert.equal(nn.epochsRun, nn.bestEpoch + patience);
+    assert.equal(state.loss.at(-1).epoch, nn.epochsRun);
+    // The restored weights score the minimum validation loss seen at any epoch.
+    const lowest = Math.min(...state.loss.map((p) => p.valMse));
+    assert.ok(nn.validation.mse <= lowest * (1 + 1e-12));
+    assert.ok(nn.validation.mse < state.loss.at(-1).valMse);
+    // Predictions come from the restored model, matching its stored curve.
+    const point = nn.curve[50];
+    const prediction = await owner.request(`/jobs/${state.id}/predict`, {
+        x: point.x,
+        model: "nn",
+    });
+    near(prediction.body.nn, point.y, "restored model prediction");
+});
+
+test("weight decay shrinks the network and invalid regularization is rejected", async (t) => {
+    const app = await setup(t);
+    const owner = await app.connect();
+    const norm = async (weightDecay) => {
+        const created = await owner.request("/jobs", { ...lab, weightDecay });
+        const state = await waitFor(owner, created.body.id);
+        assert.equal(state.result.settings.weightDecay, weightDecay);
+        const serialized = app.jobs.owned(state.id, owner.token).model
+            .serialized;
+        // "4 1 16 16 1 tanh p1 p2 ...": skip the layer count, sizes, and activation.
+        const parameters = serialized.split(" ").slice(6).map(Number);
+        return parameters.reduce((sum, value) => sum + value * value, 0);
+    };
+    const plain = await norm(0);
+    const decayed = await norm(0.5);
+    assert.ok(decayed < 0.5 * plain, `${decayed} vs ${plain}`);
+    for (const body of [
+        { ...lab, weightDecay: 2 },
+        { ...lab, optimizer: "rmsprop" },
+        { ...lab, batchSize: 0 },
+        { ...lab, patience: 1.5 },
+        { ...lab, x: lab.x.slice(0, 11), y: lab.y.slice(0, 11), patience: 5 },
+    ]) {
+        assert.equal((await owner.request("/jobs", body)).status, 400);
     }
 });
 

@@ -48,10 +48,24 @@ function runEngine(
         };
         const parse = (line) => {
             if (line.startsWith("epoch=")) {
-                const match = /^epoch=(\d+),mse=([^\s]+)$/.exec(line);
-                if (!match || !Number.isFinite(Number(match[2])))
+                const match =
+                    /^epoch=(\d+),mse=([^\s,]+)(?:,val_mse=([^\s,]+))?$/.exec(
+                        line,
+                    );
+                const point = match && {
+                    epoch: Number(match[1]),
+                    mse: Number(match[2]),
+                    ...(match[3] === undefined
+                        ? {}
+                        : { valMse: Number(match[3]) }),
+                };
+                if (
+                    !point ||
+                    !Number.isFinite(point.mse) ||
+                    (match[3] !== undefined && !Number.isFinite(point.valMse))
+                )
                     throw new Error("Invalid training progress from engine.");
-                onLoss({ epoch: Number(match[1]), mse: Number(match[2]) });
+                onLoss(point);
             } else if (line.includes("=")) {
                 const at = line.indexOf("=");
                 result[line.slice(0, at)] = line.slice(at + 1);

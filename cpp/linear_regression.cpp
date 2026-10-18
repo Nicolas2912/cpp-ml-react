@@ -34,9 +34,8 @@ void LinearRegression::fit(const std::vector<double>& X, const std::vector<doubl
     double best_mse = std::numeric_limits<double>::infinity();
     int no_improvement_count = 0;
 
-    // Initialize random number generator
-    std::random_device rd;
-    std::mt19937 gen(rd());
+    // Fixed seed: the same data always shuffles the same way, like the neural network.
+    std::mt19937 gen(42);
 
     // Pre-allocate batch vectors
     std::vector<double> batch_X(batch_size);

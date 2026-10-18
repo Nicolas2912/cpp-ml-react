@@ -1,5 +1,9 @@
-export function sampleData(kind = "curve", count = 60, noise = 0.15) {
-  let seed = 17;
+export function sampleData(
+  kind = "curve",
+  count = 60,
+  noise = 0.15,
+  seed = 17,
+) {
   const x = [],
     y = [];
   for (let i = 0; i < count; i++) {

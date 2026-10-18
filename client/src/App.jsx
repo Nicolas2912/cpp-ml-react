@@ -3,8 +3,30 @@ import { Scatter, Line } from "react-chartjs-2";
 const NNVisualizer = lazy(() => import("./NNVisualizer"));
 import Results from "./components/Results";
 import Predict from "./components/Predict";
-import usePlayground from "./hooks/usePlayground";
+import usePlayground, { FULL_BATCH } from "./hooks/usePlayground";
 import "./App.css";
+
+function SelectChevron({ className }) {
+  return (
+    <span
+      className={`pointer-events-none absolute inset-y-0 right-4 flex items-center ${className}`}
+      aria-hidden="true"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-4 w-4"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2}
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+      </svg>
+    </span>
+  );
+}
+
+const formatEpoch = (epoch) => Number(epoch).toLocaleString("en-US");
 
 function App() {
   const {
@@ -39,6 +61,17 @@ function App() {
     setNnEpochsInput,
     nnActivation,
     setNnActivation,
+    nnOptimizer,
+    setNnOptimizer,
+    nnBatchSize,
+    setNnBatchSize,
+    nnWeightDecay,
+    setNnWeightDecay,
+    nnEarlyStopping,
+    setNnEarlyStopping,
+    nnPatience,
+    setNnPatience,
+    loadOverfittingDemo,
     nnResults,
     nnError,
     setNnError,
@@ -317,6 +350,7 @@ function App() {
                       ["line", "Line sample"],
                       ["curve", "Curve sample"],
                       ["wave", "Wave sample"],
+                      ["noisy", "Noisy wave"],
                     ].map(([kind, label]) => (
                       <button
                         key={kind}
@@ -454,7 +488,8 @@ function App() {
                   <div className={`${metricCardClass} space-y-3`}>
                     <p className={`text-sm ${mutedTextClass}`}>
                       Train separately below, or compare both on the same 80/20
-                      split. Errors use original Y units.
+                      split. The network also holds out a fifth of its training
+                      points for validation. Errors use original Y units.
                     </p>
                     <button
                       type="button"
@@ -660,6 +695,30 @@ function App() {
                       </button>
                     </div>
 
+                    <div className={`${metricCardClass} space-y-3`}>
+                      <p
+                        className={`text-xs font-semibold uppercase tracking-[0.3em] ${mutedTextClass}`}
+                      >
+                        Overfitting lab
+                      </p>
+                      <p
+                        className={`text-sm leading-relaxed ${mutedTextClass}`}
+                      >
+                        Load 40 noisy points and a network big enough to
+                        memorize them. Train it and watch validation loss turn
+                        upward while training loss keeps falling, then retrain
+                        with early stopping or weight decay.
+                      </p>
+                      <button
+                        type="button"
+                        className={`${outlineButtonClass} w-full sm:w-auto`}
+                        disabled={busy}
+                        onClick={loadOverfittingDemo}
+                      >
+                        Load overfitting demo
+                      </button>
+                    </div>
+
                     {(loadingNN || nnResults || lossHistory.length > 0) && (
                       <div
                         className={`rounded-2xl border p-5 ${isDark ? "border-slate-800/80 bg-slate-900/50" : "border-slate-200 bg-slate-50/80"}`}
@@ -680,6 +739,22 @@ function App() {
                             options={lossChartOptions}
                           />
                         </div>
+                        {nnResults && !loadingNN && (
+                          <p
+                            className={`mt-3 text-xs sm:text-sm leading-relaxed ${mutedTextClass}`}
+                            role="status"
+                          >
+                            {nnResults.validationCount > 0
+                              ? `Training MSE uses the ${nnResults.fitCount} points the network learns from; validation MSE uses ${nnResults.validationCount} points it never trains on. ${
+                                  nnResults.stoppedEarly
+                                    ? `Early stopping ended training at epoch ${formatEpoch(nnResults.epochsRun)} and restored the weights from epoch ${formatEpoch(nnResults.bestEpoch)}.`
+                                    : nnResults.restoredBest
+                                      ? `Validation loss kept improving often enough to run all epochs; the weights from its best epoch (${formatEpoch(nnResults.bestEpoch)}) were kept.`
+                                      : `Validation loss was lowest at epoch ${formatEpoch(nnResults.bestEpoch)} of ${formatEpoch(nnResults.epochsRun)}.`
+                                }`
+                              : "Add at least 12 points to hold out a validation set and see validation loss."}
+                          </p>
+                        )}
                       </div>
                     )}
 
@@ -757,26 +832,104 @@ function App() {
                               <option value="tanh">Tanh</option>
                               <option value="relu">ReLU</option>
                             </select>
-                            <span
-                              className={`pointer-events-none absolute inset-y-0 right-4 flex items-center ${selectArrowClass}`}
-                              aria-hidden="true"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-4 w-4"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                strokeWidth={2}
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  d="M6 9l6 6 6-6"
-                                />
-                              </svg>
-                            </span>
+                            <SelectChevron className={selectArrowClass} />
                           </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label
+                            className={fieldLabelClass}
+                            htmlFor="optimizer"
+                          >
+                            Optimizer
+                          </label>
+                          <div className="relative">
+                            <select
+                              id="optimizer"
+                              className={selectClassName}
+                              value={nnOptimizer}
+                              onChange={(e) => setNnOptimizer(e.target.value)}
+                              disabled={busy || !connected}
+                            >
+                              <option value="sgd">SGD</option>
+                              <option value="adam">Adam</option>
+                            </select>
+                            <SelectChevron className={selectArrowClass} />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label
+                            className={fieldLabelClass}
+                            htmlFor="batch-size"
+                          >
+                            Batch size
+                          </label>
+                          <div className="relative">
+                            <select
+                              id="batch-size"
+                              className={selectClassName}
+                              value={nnBatchSize}
+                              onChange={(e) => setNnBatchSize(e.target.value)}
+                              disabled={busy || !connected}
+                            >
+                              <option value="1">1 · per sample</option>
+                              <option value="8">8</option>
+                              <option value="32">32</option>
+                              <option value={String(FULL_BATCH)}>
+                                Full batch
+                              </option>
+                            </select>
+                            <SelectChevron className={selectArrowClass} />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label
+                            className={fieldLabelClass}
+                            htmlFor="weight-decay"
+                          >
+                            Weight decay
+                          </label>
+                          <input
+                            id="weight-decay"
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            className={inputClassName}
+                            value={nnWeightDecay}
+                            onChange={(e) => setNnWeightDecay(e.target.value)}
+                            disabled={busy || !connected}
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label
+                            className={`${fieldLabelClass} flex items-center gap-2`}
+                            htmlFor="early-stopping"
+                          >
+                            <input
+                              id="early-stopping"
+                              type="checkbox"
+                              className="h-4 w-4 accent-indigo-500"
+                              checked={nnEarlyStopping}
+                              onChange={(e) =>
+                                setNnEarlyStopping(e.target.checked)
+                              }
+                              disabled={busy || !connected}
+                            />
+                            Early stopping
+                          </label>
+                          <input
+                            id="patience"
+                            type="number"
+                            min="1"
+                            step="1"
+                            aria-label="Patience in epochs"
+                            className={inputClassName}
+                            value={nnPatience}
+                            onChange={(e) => setNnPatience(e.target.value)}
+                            disabled={busy || !connected || !nnEarlyStopping}
+                            placeholder="Patience (epochs)"
+                          />
                         </div>
                       </div>
 
@@ -808,6 +961,38 @@ function App() {
                                 {formatMetric(nnResults.trainingTimeMs, "time")}
                               </p>
                             </div>
+                            {nnResults.validationCount > 0 && (
+                              <>
+                                <div className={`${metricCardClass} space-y-1`}>
+                                  <p
+                                    className={`text-xs sm:text-sm font-medium ${mutedTextClass}`}
+                                  >
+                                    Validation MSE
+                                  </p>
+                                  <p className="text-base sm:text-xl font-mono text-sky-400">
+                                    {formatMetric(
+                                      nnResults.validationMse,
+                                      "mse",
+                                    )}
+                                  </p>
+                                </div>
+                                <div className={`${metricCardClass} space-y-1`}>
+                                  <p
+                                    className={`text-xs sm:text-sm font-medium ${mutedTextClass}`}
+                                  >
+                                    Best validation epoch
+                                  </p>
+                                  <p className="text-base sm:text-xl font-mono text-amber-400">
+                                    {formatEpoch(nnResults.bestEpoch)}{" "}
+                                    <span
+                                      className={`ml-2 text-xs font-sans ${mutedTextClass}`}
+                                    >
+                                      of {formatEpoch(nnResults.epochsRun)} run
+                                    </span>
+                                  </p>
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
@@ -872,25 +1057,7 @@ function App() {
                           <option value="hidden">Hide blueprint</option>
                           <option value="visible">Show blueprint</option>
                         </select>
-                        <span
-                          className={`pointer-events-none absolute inset-y-0 right-4 flex items-center ${selectArrowClass}`}
-                          aria-hidden="true"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-4 w-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M6 9l6 6 6-6"
-                            />
-                          </svg>
-                        </span>
+                        <SelectChevron className={selectArrowClass} />
                       </div>
                     </div>
                   </div>
@@ -970,6 +1137,12 @@ function App() {
                     <p>
                       • <span className="font-semibold">Orange trail</span>{" "}
                       follows neural predictions across X.
+                    </p>
+                  )}
+                  {nnResults?.validationCount > 0 && (
+                    <p>
+                      • <span className="font-semibold">Amber rings</span> mark
+                      the validation points the network never trains on.
                     </p>
                   )}
                   {nnPrediction !== null && (

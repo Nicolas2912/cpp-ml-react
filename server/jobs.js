@@ -89,20 +89,29 @@ class Jobs {
             learningRate,
             epochs,
             activation = "sigmoid",
+            weightDecay = 0,
+            patience = 0,
+            optimizer = "sgd",
+            batchSize = 1,
             model = "both",
         } = job.data;
         const split = splitData(x, y);
         const trainX = split.train.map((point) => point.x);
         const trainY = split.train.map((point) => point.y);
-        const sx = scaler(trainX);
-        const sy = scaler(trainY);
+        const fitX = split.fit.map((point) => point.x);
+        const fitY = split.fit.map((point) => point.y);
+        const validationX = split.validation.map((point) => point.x);
+        // The network only learns from the fit points, so its scalers come from them alone.
+        const sx = scaler(fitX);
+        const sy = scaler(fitY);
         const min = Math.min(...x),
             max = Math.max(...x);
         const gridX = Array.from(
             { length: 101 },
             (_, i) => min + ((max - min) * i) / 100,
         );
-        const evaluationX = [...split.test.map((point) => point.x), ...gridX];
+        const testX = split.test.map((point) => point.x);
+        const evaluationX = [...testX, ...validationX, ...gridX];
         const opts = { ...this.options, signal: job.controller.signal };
         try {
             job.model = { sx, sy };
@@ -113,6 +122,10 @@ class Jobs {
                     learningRate,
                     epochs,
                     activation,
+                    weightDecay,
+                    patience,
+                    optimizer,
+                    batchSize,
                     seed: 42,
                     model,
                 },
@@ -154,17 +167,37 @@ class Jobs {
                         String(learningRate),
                         String(epochs),
                         activation,
+                        `weight_decay=${weightDecay}`,
+                        `patience=${patience}`,
+                        `optimizer=${optimizer}`,
+                        `batch=${batchSize}`,
                     ],
-                    `${trainX.map((value) => scale(value, sx))}\n${trainY.map((value) => scale(value, sy))}\n${evaluationX.map((value) => scale(value, sx))}\n`,
+                    [
+                        fitX.map((value) => scale(value, sx)),
+                        fitY.map((value) => scale(value, sy)),
+                        evaluationX.map((value) => scale(value, sx)),
+                        validationX.map((value) => scale(value, sx)),
+                        split.validation.map((point) => scale(point.y, sy)),
+                    ]
+                        .map((values) => `${values}\n`)
+                        .join(""),
                     {
                         ...opts,
                         onLoss: (point) => {
                             if (job.status !== "running") return;
+                            // Scaling Y by its range scales squared errors by range².
                             const original = {
                                 epoch: point.epoch,
                                 mse: point.mse * sy.range ** 2,
+                                ...(point.valMse === undefined
+                                    ? {}
+                                    : { valMse: point.valMse * sy.range ** 2 }),
                             };
-                            if (!Number.isFinite(original.mse))
+                            if (
+                                !Number.isFinite(original.mse) ||
+                                (original.valMse !== undefined &&
+                                    !Number.isFinite(original.valMse))
+                            )
                                 throw new Error(
                                     "Training diverged. Lower the learning rate.",
                                 );
@@ -177,9 +210,9 @@ class Jobs {
                         },
                     },
                 );
-                const trainPredictions = numbers(
+                const fitPredictions = numbers(
                     nn.nn_predictions,
-                    trainX.length,
+                    fitX.length,
                 ).map((value) => unscale(value, sy));
                 const predictions = numbers(
                     nn.eval_predictions,
@@ -191,16 +224,29 @@ class Jobs {
                 )
                     throw new Error("The engine returned invalid model data.");
                 job.model.serialized = nn.model;
+                const gridStart = testX.length + validationX.length;
+                const validated = validationX.length > 0;
+                const [epochsRun] = numbers(nn.epochs_run, 1);
                 job.result.nn = {
-                    train: metrics(split.train, trainPredictions),
+                    train: metrics(split.fit, fitPredictions),
+                    validation: validated
+                        ? metrics(
+                              split.validation,
+                              predictions.slice(testX.length, gridStart),
+                          )
+                        : null,
                     test: metrics(
                         split.test,
-                        predictions.slice(0, split.test.length),
+                        predictions.slice(0, testX.length),
                     ),
+                    epochsRun,
+                    bestEpoch: validated ? numbers(nn.best_epoch, 1)[0] : null,
+                    stoppedEarly: validated && nn.stopped_early === "1",
+                    restoredBest: patience > 0,
                     timeMs: numbers(nn.training_time_ms, 1)[0],
                     curve: gridX.map((value, i) => ({
                         x: value,
-                        y: predictions[split.test.length + i],
+                        y: predictions[gridStart + i],
                     })),
                 };
             }

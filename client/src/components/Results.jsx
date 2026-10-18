@@ -49,6 +49,8 @@ export default function Results({ result, className = "" }) {
         {split.test.length
           ? `${split.train.length} training points · ${split.test.length} held-out test points. Both models use the same split.`
           : "Training-only run. Add at least 5 points to get held-out test scores."}
+        {split.validation?.length > 0 &&
+          ` Linear regression fits all ${split.train.length} training points; the network learns from ${split.fit.length} and holds out ${split.validation.length} for validation.`}
       </p>
       <div className="comparison-table-scroll">
         <table>

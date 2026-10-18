@@ -293,3 +293,122 @@ test("sends the chosen hidden activation with NN training", async () => {
   await start("Compare both models");
   expect(JSON.parse(fetch.mock.calls[0][1].body).activation).toBe("relu");
 });
+
+test("sends optimizer, batch size, weight decay, and patience only with early stopping", async () => {
+  boot();
+  fireEvent.click(screen.getByRole("button", { name: "Neural Network" }));
+  await start("Train NN & Predict");
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({
+    optimizer: "sgd",
+    batchSize: 1,
+    weightDecay: 0,
+    patience: 0,
+  });
+  act(() =>
+    socket.emit({ id: "job", type: "failed", status: "failed", error: "x" }),
+  );
+  fireEvent.change(screen.getByLabelText("Optimizer"), {
+    target: { value: "adam" },
+  });
+  fireEvent.change(screen.getByLabelText("Batch size"), {
+    target: { value: "1000" },
+  });
+  fireEvent.change(screen.getByLabelText("Weight decay"), {
+    target: { value: "0.3" },
+  });
+  expect(screen.getByLabelText("Patience in epochs")).toBeDisabled();
+  fireEvent.click(screen.getByLabelText("Early stopping"));
+  fireEvent.change(screen.getByLabelText("Patience in epochs"), {
+    target: { value: "200" },
+  });
+  await start("Train NN & Predict");
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({
+    model: "nn",
+    optimizer: "adam",
+    batchSize: 1000,
+    weightDecay: 0.3,
+    patience: 200,
+  });
+});
+
+test("loads the overfitting demo and explains early stopping results", async () => {
+  boot();
+  fireEvent.click(screen.getByRole("button", { name: "Neural Network" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Load overfitting demo" }),
+  );
+  expect(screen.getByLabelText("Layer sizes (e.g., 1-4-1)")).toHaveValue(
+    "1-32-32-1",
+  );
+  expect(screen.getByLabelText("Optimizer")).toHaveValue("adam");
+  expect(screen.getByLabelText("Batch size")).toHaveValue("1000");
+  expect(screen.getByLabelText("Epochs")).toHaveValue(5000);
+  expect(screen.getByLabelText("Hidden activation")).toHaveValue("tanh");
+  expect(screen.getByText("40 data points ready")).toBeInTheDocument();
+  await start("Train NN & Predict");
+  const body = JSON.parse(fetch.mock.calls[0][1].body);
+  expect(body).toMatchObject({ layers: "1-32-32-1", learningRate: 0.01 });
+  expect(body.x).toHaveLength(40);
+  const points = (n, offset = 0) =>
+    Array.from({ length: n }, (_, i) => ({ x: i + offset, y: i, index: i }));
+  act(() =>
+    socket.emit({
+      id: "job",
+      type: "completed",
+      status: "completed",
+      result: {
+        split: {
+          train: points(32),
+          test: points(8, 100),
+          validation: points(6),
+          fit: points(26, 6),
+        },
+        lr: null,
+        nn: {
+          ...result.nn,
+          validation: { mse: 0.25, r2: 0.8 },
+          epochsRun: 2588,
+          bestEpoch: 1588,
+          stoppedEarly: true,
+          restoredBest: true,
+        },
+      },
+      loss: [
+        { epoch: 1500, mse: 0.4, valMse: 0.3 },
+        { epoch: 2588, mse: 0.3, valMse: 0.5 },
+      ],
+    }),
+  );
+  expect(
+    await screen.findByText(
+      /Early stopping ended training at epoch 2,588 and restored the weights from epoch 1,588\./,
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/validation MSE uses 6 points/)).toBeInTheDocument();
+  expect(screen.getByText("Validation MSE")).toBeInTheDocument();
+  expect(screen.getByText("of 2,588 run")).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      /the network learns from 26 and holds out 6 for validation/,
+    ),
+  ).toBeInTheDocument();
+});
+
+test("keeps validation loss from streamed progress", () => {
+  const running = { id: "job", status: "running", loss: [] };
+  const next = mergeUpdate(running, {
+    id: "job",
+    type: "progress",
+    epoch: 10,
+    mse: 0.5,
+    valMse: 0.7,
+  });
+  expect(next.loss).toEqual([{ epoch: 10, mse: 0.5, valMse: 0.7 }]);
+  const plain = mergeUpdate(running, {
+    id: "job",
+    type: "progress",
+    epoch: 10,
+    mse: 0.5,
+  });
+  expect(plain.loss).toEqual([{ epoch: 10, mse: 0.5 }]);
+});

@@ -251,6 +251,244 @@ int main() {
         runner.expectNear(restored.predict({0.3})[0], original.predict({0.3})[0], 1e-14,
                           "serialized " + activation_name(activation) + " model reproduces inference");
     }
+    // With weight decay, backprop must follow the gradient of 0.5 * (pred - target)^2 + 0.5 * l2 * sum(W^2).
+    // Check a hidden weight, an output weight, and a bias (biases are not decayed).
+    for (Activation activation : {Activation::Sigmoid, Activation::Tanh, Activation::ReLU}) {
+        const double lr = 1e-3;
+        const double l2 = 0.05;
+        NeuralNetwork base({1, 3, 2, 1}, lr, 42, activation);
+        base.weights_[0] = {{0.4}, {-0.3}, {0.8}};
+        base.biases_[0] = {0.1, 0.2, -0.05};
+        base.weights_[1] = {{0.5, -0.6, 0.7}, {-0.2, 0.3, 0.9}};
+        base.biases_[1] = {0.05, -0.1};
+        base.weights_[2] = {{0.6, -0.4}};
+        base.biases_[2] = {0.02};
+        base.set_weight_decay(l2);
+        const Vector input{0.7};
+        const Vector target{0.2};
+        auto objective = [&](NeuralNetwork& net) {
+            double diff = net.predict(input)[0] - target[0];
+            double penalty = 0.0;
+            for (const auto& layer : net.weights_) for (const auto& row : layer) for (double w : row) penalty += w * w;
+            return 0.5 * diff * diff + 0.5 * l2 * penalty;
+        };
+        struct Probe { const char* name; std::function<double&(NeuralNetwork&)> param; };
+        const std::vector<Probe> probes{
+            {"hidden weight", [](NeuralNetwork& n) -> double& { return n.weights_[0][2][0]; }},
+            {"middle weight", [](NeuralNetwork& n) -> double& { return n.weights_[1][1][0]; }},
+            {"output weight", [](NeuralNetwork& n) -> double& { return n.weights_[2][0][1]; }},
+            {"hidden bias", [](NeuralNetwork& n) -> double& { return n.biases_[1][0]; }},
+        };
+        for (const auto& probe : probes) {
+            const double eps = 1e-6;
+            NeuralNetwork plus = base, minus = base, step = base;
+            probe.param(plus) += eps;
+            probe.param(minus) -= eps;
+            const double numeric_grad = (objective(plus) - objective(minus)) / (2 * eps);
+            const double before = probe.param(step);
+            step.backpropagate(input, target);
+            const double analytic_grad = (before - probe.param(step)) / lr;
+            runner.expectNear(analytic_grad, numeric_grad, 1e-7,
+                              std::string("weight-decay backprop matches finite differences for ") + probe.name + " (" +
+                                  activation_name(activation) + ")");
+        }
+    }
+
+    runner.expectThrows("set_weight_decay rejects negative values", [] { NeuralNetwork nn({1, 2, 1}); nn.set_weight_decay(-0.1); });
+    runner.expectThrows("set_weight_decay rejects values above 1", [] { NeuralNetwork nn({1, 2, 1}); nn.set_weight_decay(1.5); });
+    runner.expectThrows("set_weight_decay rejects NaN", [] { NeuralNetwork nn({1, 2, 1}); nn.set_weight_decay(NAN); });
+
+    // Shared quiet training fixture: a noisy sine where a wide network can memorize noise.
+    std::vector<Vector> fit_x, fit_y, val_x, val_y;
+    for (int i = 0; i < 24; ++i) {
+        const double x = i / 23.0;
+        const double noise = (i % 2 ? 0.3 : -0.3) * ((i * 7) % 5) / 4.0;
+        fit_x.push_back({x});
+        fit_y.push_back({0.5 + 0.4 * std::sin(6 * x) + noise});
+    }
+    for (int i = 0; i < 8; ++i) {
+        const double x = (i + 0.5) / 8.0;
+        val_x.push_back({x});
+        val_y.push_back({0.5 + 0.4 * std::sin(6 * x)});
+    }
+    auto quietly = [](const std::function<void()>& body) {
+        // Capture progress output at the engine's full precision.
+        std::ostringstream sink;
+        auto* buffer = std::cout.rdbuf(sink.rdbuf());
+        const auto precision = std::cout.precision(17);
+        auto restore = [&] {
+            std::cout.rdbuf(buffer);
+            std::cout.precision(precision);
+        };
+        try {
+            body();
+        } catch (...) {
+            restore();
+            throw;
+        }
+        restore();
+        return sink.str();
+    };
+    auto squared_weights = [](const NeuralNetwork& net) {
+        double total = 0.0;
+        for (const auto& layer : net.weights_) for (const auto& row : layer) for (double w : row) total += w * w;
+        return total;
+    };
+
+    {
+        NeuralNetwork plain({1, 16, 1}, 0.1, 42, Activation::Tanh);
+        NeuralNetwork decayed({1, 16, 1}, 0.1, 42, Activation::Tanh);
+        decayed.set_weight_decay(0.01);
+        quietly([&] {
+            plain.train_for_epochs(fit_x, fit_y, 300, 300);
+            decayed.train_for_epochs(fit_x, fit_y, 300, 300);
+        });
+        runner.expectTrue(squared_weights(decayed) < 0.8 * squared_weights(plain),
+                          "weight decay shrinks the trained weights",
+                          std::to_string(squared_weights(decayed)) + " vs " + std::to_string(squared_weights(plain)));
+    }
+
+    {
+        NeuralNetwork a({1, 8, 1}, 0.1, 42, Activation::Tanh);
+        NeuralNetwork b({1, 8, 1}, 0.1, 42, Activation::Tanh);
+        Vector legacy;
+        TrainingSummary summary;
+        const std::string legacy_log = quietly([&] { legacy = a.train_for_epochs(fit_x, fit_y, 50, 10); });
+        const std::string fit_log = quietly([&] { summary = b.fit(fit_x, fit_y, 50, 10, {}, {}); });
+        runner.expectTrue(legacy == summary.predictions && legacy_log == fit_log && summary.epochs_run == 50 &&
+                              summary.best_epoch == 0 && !summary.stopped_early,
+                          "fit without validation matches train_for_epochs exactly");
+    }
+
+    {
+        NeuralNetwork nn({1, 16, 1}, 0.2, 42, Activation::Tanh);
+        TrainingSummary summary;
+        const std::string log = quietly([&] { summary = nn.fit(fit_x, fit_y, 200, 50, val_x, val_y); });
+        double lowest = std::numeric_limits<double>::infinity();
+        runner.expectTrue(summary.epochs_run == 200 && !summary.stopped_early && summary.best_epoch >= 1 &&
+                              summary.best_epoch <= 200,
+                          "fit without patience runs every epoch and tracks the best validation epoch");
+        runner.expectTrue(log.find("epoch=50,mse=") == 0 && log.find(",val_mse=") != std::string::npos &&
+                              log.find("epoch=200,") != std::string::npos,
+                          "progress lines report validation MSE");
+        std::istringstream lines(log);
+        std::string line;
+        while (std::getline(lines, line)) {
+            lowest = std::min(lowest, std::stod(line.substr(line.find("val_mse=") + 8)));
+        }
+        runner.expectTrue(summary.best_validation_mse <= lowest, "best validation MSE is the minimum over all epochs");
+        runner.expectNear(nn.dataset_mse(val_x, val_y), std::stod(log.substr(log.rfind("val_mse=") + 8)), 1e-15,
+                          "without early stopping the final weights are the last epoch's");
+    }
+
+    {
+        // Validation targets far from the training targets: fitting the training data keeps making
+        // validation worse, so early stopping must fire and restore the best epoch's weights.
+        std::vector<Vector> far_y;
+        for (const auto& v : val_y) far_y.push_back({-v[0]});
+        const int patience = 25;
+        NeuralNetwork nn({1, 16, 1}, 0.2, 42, Activation::Tanh);
+        TrainingSummary summary;
+        const std::string log = quietly([&] { summary = nn.fit(fit_x, fit_y, 2000, 100, val_x, far_y, patience); });
+        runner.expectTrue(summary.stopped_early && summary.epochs_run == summary.best_epoch + patience &&
+                              summary.epochs_run < 2000,
+                          "early stopping fires patience epochs after the best validation epoch",
+                          "best " + std::to_string(summary.best_epoch) + ", ran " + std::to_string(summary.epochs_run));
+        runner.expectTrue(log.find("epoch=" + std::to_string(summary.epochs_run) + ",") != std::string::npos,
+                          "the stopping epoch is reported");
+        runner.expectTrue(nn.dataset_mse(val_x, far_y) == summary.best_validation_mse,
+                          "early stopping restores the best validation weights exactly");
+        Vector restored;
+        for (const auto& x : fit_x) restored.push_back(nn.predict(x)[0]);
+        runner.expectTrue(restored == summary.predictions, "returned predictions come from the restored weights");
+    }
+
+    {
+        // A patience longer than the run never stops early but still restores the best epoch.
+        NeuralNetwork nn({1, 16, 1}, 0.2, 42, Activation::Tanh);
+        TrainingSummary summary;
+        quietly([&] { summary = nn.fit(fit_x, fit_y, 120, 120, val_x, val_y, 5000); });
+        runner.expectTrue(!summary.stopped_early && summary.epochs_run == 120 &&
+                              nn.dataset_mse(val_x, val_y) == summary.best_validation_mse,
+                          "a long patience runs every epoch and restores the best weights");
+    }
+
+    runner.expectThrows("fit rejects patience without validation data", [&] {
+        NeuralNetwork nn({1, 2, 1});
+        nn.fit(fit_x, fit_y, 10, 10, {}, {}, 5);
+    });
+    runner.expectThrows("fit rejects mismatched validation data", [&] {
+        NeuralNetwork nn({1, 2, 1});
+        nn.fit(fit_x, fit_y, 10, 10, val_x, fit_y);
+    });
+    runner.expectThrows("fit rejects negative patience", [&] {
+        NeuralNetwork nn({1, 2, 1});
+        nn.fit(fit_x, fit_y, 10, 10, val_x, val_y, -1);
+    });
+
+    // Reference parameters from PyTorch (tests/reference/optimizer_reference.py): three mini-batch
+    // steps on a 1-3-2-1 tanh network with weight decay 0.1 on the weights only.
+    {
+        const std::vector<double> expected_adamw{0.42735996839377088, -0.32719579534279092, 0.82758650672725331, 0.096424821649594511, 0.20269751617503592, -0.050152379701106142, 0.50186469732168093, -0.60619508468446337, 0.72622211629849731, -0.202543858998603, 0.30809359919723178, 0.86887797118240995, 0.046912091350128748, -0.096521518278683133, 0.62614547414026533, -0.375977132751381, 0.016375131293409863};
+        const std::vector<double> expected_sgd{0.39936338652396508, -0.29981336563904709, 0.79761661756559821, 0.10058681920333408, 0.19914108734302241, -0.04991488262954534, 0.4989562670681103, -0.59826321148752826, 0.69853813891633054, -0.19974211122850077, 0.29916586542161594, 0.89681090930361473, 0.051006763459523138, -0.10068641157493449, 0.59968774729314578, -0.39802395256948897, 0.021566073371886194};
+        const std::vector<std::pair<Vector, Vector>> batches{
+            {{0.7, -0.2, 0.4}, {0.2, -0.5, 0.1}},
+            {{0.1, 0.9}, {0.6, 0.3}},
+            {{-0.8, 0.3, 0.5}, {-0.4, 0.0, 0.7}},
+        };
+        for (Optimizer optimizer : {Optimizer::Adam, Optimizer::SGD}) {
+            NeuralNetwork nn({1, 3, 2, 1}, 0.01, 42, Activation::Tanh);
+            nn.weights_[0] = {{0.4}, {-0.3}, {0.8}};
+            nn.biases_[0] = {0.1, 0.2, -0.05};
+            nn.weights_[1] = {{0.5, -0.6, 0.7}, {-0.2, 0.3, 0.9}};
+            nn.biases_[1] = {0.05, -0.1};
+            nn.weights_[2] = {{0.6, -0.4}};
+            nn.biases_[2] = {0.02};
+            nn.set_weight_decay(0.1);
+            nn.set_optimizer(optimizer, 3);
+            for (const auto& batch : batches) {
+                for (size_t i = 0; i < batch.first.size(); ++i) {
+                    nn.accumulate_gradients({batch.first[i]}, {batch.second[i]});
+                }
+                nn.apply_gradients(batch.first.size());
+            }
+            std::vector<double> actual;
+            for (size_t l = 0; l < nn.weights_.size(); ++l) {
+                for (const auto& row : nn.weights_[l]) actual.insert(actual.end(), row.begin(), row.end());
+                actual.insert(actual.end(), nn.biases_[l].begin(), nn.biases_[l].end());
+            }
+            const auto& expected = optimizer == Optimizer::Adam ? expected_adamw : expected_sgd;
+            double worst = actual.size() == expected.size() ? 0.0 : INFINITY;
+            for (size_t i = 0; i < std::min(actual.size(), expected.size()); ++i) {
+                worst = std::max(worst, std::fabs(actual[i] - expected[i]));
+            }
+            runner.expectTrue(worst < 1e-12,
+                              (optimizer == Optimizer::Adam ? std::string("AdamW") : std::string("mini-batch SGD with L2")) +
+                                  " matches PyTorch to 1e-12",
+                              "largest difference " + std::to_string(worst));
+        }
+    }
+
+    runner.expectTrue(parse_optimizer("sgd") == Optimizer::SGD && parse_optimizer("adam") == Optimizer::Adam &&
+                          optimizer_name(Optimizer::Adam) == "adam" && optimizer_name(Optimizer::SGD) == "sgd",
+                      "optimizer names round-trip");
+    runner.expectThrows("parse_optimizer rejects unknown names", [] { parse_optimizer("rmsprop"); });
+    runner.expectThrows("set_optimizer rejects a zero batch size", [] {
+        NeuralNetwork nn({1, 2, 1});
+        nn.set_optimizer(Optimizer::Adam, 0);
+    });
+
+    {
+        // Full-batch Adam on the fixture: smooth descent and a better fit than the starting point.
+        NeuralNetwork nn({1, 16, 1}, 0.01, 42, Activation::Tanh);
+        const double before = nn.dataset_mse(fit_x, fit_y);
+        nn.set_optimizer(Optimizer::Adam, 1000);
+        TrainingSummary summary;
+        quietly([&] { summary = nn.fit(fit_x, fit_y, 300, 300, val_x, val_y); });
+        runner.expectTrue(nn.dataset_mse(fit_x, fit_y) < 0.5 * before && summary.epochs_run == 300,
+                          "full-batch Adam reduces the training loss");
+    }
+
     runner.expectThrows("rejects zero layer", [] { NeuralNetwork nn({1, 0, 1}); });
     runner.expectThrows("rejects invalid learning rate", [] { NeuralNetwork nn({1, 2, 1}, -1); });
     runner.expectThrows("rejects invalid epoch count", [] {

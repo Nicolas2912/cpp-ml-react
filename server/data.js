@@ -2,10 +2,13 @@ const LIMITS = Object.freeze({
     points: 1000,
     magnitude: 1e6,
     epochs: 10000,
-    work: 5e7,
+    // Parameters × points × epochs; the largest runs take about 3 s of engine time.
+    work: 2.5e8,
+    weightDecay: 1,
 });
 
 const ACTIVATIONS = Object.freeze(["sigmoid", "tanh", "relu"]);
+const OPTIMIZERS = Object.freeze(["sgd", "adam"]);
 
 function validateDataset(body) {
     const {
@@ -16,6 +19,10 @@ function validateDataset(body) {
         learningRate = 0.3,
         epochs = 3000,
         activation = "sigmoid",
+        weightDecay = 0,
+        patience = 0,
+        optimizer = "sgd",
+        batchSize = 1,
     } = body || {};
     if (
         !Array.isArray(x) ||
@@ -65,6 +72,27 @@ function validateDataset(body) {
         throw new Error("Use 1 to 10,000 epochs.");
     if (!ACTIVATIONS.includes(activation))
         throw new Error("Choose a sigmoid, tanh, or relu activation.");
+    if (
+        typeof weightDecay !== "number" ||
+        !Number.isFinite(weightDecay) ||
+        weightDecay < 0 ||
+        weightDecay > LIMITS.weightDecay
+    )
+        throw new Error("Weight decay must be between 0 and 1.");
+    if (!Number.isInteger(patience) || patience < 0 || patience > LIMITS.epochs)
+        throw new Error("Patience must be a whole number from 0 to 10,000.");
+    if (!OPTIMIZERS.includes(optimizer))
+        throw new Error("Choose the sgd or adam optimizer.");
+    if (
+        !Number.isInteger(batchSize) ||
+        batchSize < 1 ||
+        batchSize > LIMITS.points
+    )
+        throw new Error("Batch size must be a whole number from 1 to 1,000.");
+    if (patience > 0 && splitSizes(x.length).validation === 0)
+        throw new Error(
+            "Early stopping needs at least 12 points so a validation set can be held out.",
+        );
     const parameters = sizes
         .slice(1)
         .reduce((total, size, i) => total + size * (sizes[i] + 1), 0);
@@ -79,8 +107,21 @@ function validateDataset(body) {
         learningRate,
         epochs,
         activation,
+        weightDecay,
+        patience,
+        optimizer,
+        batchSize,
         model,
     };
+}
+
+// Test points are held out from every model. The network also holds out validation
+// points from its training data to watch for overfitting and to stop early.
+function splitSizes(count) {
+    const test = count < 5 ? 0 : Math.max(1, Math.round(count * 0.2));
+    const train = count - test;
+    const validation = train < 10 ? 0 : Math.max(2, Math.round(train * 0.2));
+    return { test, train, validation };
 }
 
 function splitData(x, y) {
@@ -92,14 +133,21 @@ function splitData(x, y) {
         const j = Math.floor((seed / 4294967296) * (i + 1));
         [indices[i], indices[j]] = [indices[j], indices[i]];
     }
-    const testCount =
-        x.length < 5 ? 0 : Math.max(1, Math.round(x.length * 0.2));
+    const sizes = splitSizes(x.length);
     const points = indices.map((index) => ({
         x: x[index],
         y: y[index],
         index,
     }));
-    return { train: points.slice(testCount), test: points.slice(0, testCount) };
+    const train = points.slice(sizes.test);
+    // Validation is a subset of the training points: linear regression has nothing to
+    // tune and fits on all of them, while the network learns only from the rest.
+    return {
+        train,
+        test: points.slice(0, sizes.test),
+        validation: train.slice(0, sizes.validation),
+        fit: train.slice(sizes.validation),
+    };
 }
 
 function scaler(values) {
@@ -133,6 +181,7 @@ function metrics(points, predictions) {
 module.exports = {
     LIMITS,
     validateDataset,
+    splitSizes,
     splitData,
     scaler,
     scale,

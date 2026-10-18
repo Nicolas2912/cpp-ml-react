@@ -24,6 +24,11 @@ ChartJS.register(
   LogarithmicScale,
 );
 
+// Seed of the "Noisy wave" sample: one where an unregularized network visibly overfits.
+const NOISY_SEED = 12;
+// Batch sizes at or above the number of training points use the full batch.
+export const FULL_BATCH = 1000;
+
 export default function usePlayground() {
   const [inputs, setInputs] = useState({
     x: "1, 2, 3, 4, 5",
@@ -42,6 +47,11 @@ export default function usePlayground() {
   const [nnLearningRateInput, setRate] = useState("0.01");
   const [nnEpochsInput, setEpochs] = useState("1000");
   const [nnActivation, setActivation] = useState("sigmoid");
+  const [nnOptimizer, setOptimizer] = useState("sgd");
+  const [nnBatchSize, setBatchSize] = useState("1");
+  const [nnWeightDecay, setWeightDecay] = useState("0");
+  const [nnEarlyStopping, setEarlyStopping] = useState(false);
+  const [nnPatience, setPatience] = useState("1000");
   const [lrModel, setLrModel] = useState(null);
   const [nnModel, setNnModel] = useState(null);
   const [trainingMode, setTrainingMode] = useState("both");
@@ -136,6 +146,26 @@ export default function usePlayground() {
     invalidate(false);
     setActivation(value);
   };
+  const setNnOptimizer = (value) => {
+    invalidate(false);
+    setOptimizer(value);
+  };
+  const setNnBatchSize = (value) => {
+    invalidate(false);
+    setBatchSize(value);
+  };
+  const setNnWeightDecay = (value) => {
+    invalidate(false);
+    setWeightDecay(value);
+  };
+  const setNnEarlyStopping = (value) => {
+    invalidate(false);
+    setEarlyStopping(value);
+  };
+  const setNnPatience = (value) => {
+    invalidate(false);
+    setPatience(value);
+  };
   const toggleTheme = () => {
     const next = isDark ? "light" : "dark";
     setActiveTheme(next);
@@ -147,7 +177,24 @@ export default function usePlayground() {
   };
   const loadSample = (kind) => {
     invalidate();
-    setInputs(sampleData(kind, 60));
+    setInputs(
+      kind === "noisy"
+        ? sampleData("wave", 40, 0.5, NOISY_SEED)
+        : sampleData(kind, 60),
+    );
+  };
+  // A network big enough to memorize the noisy sample, trained long enough to do it.
+  const loadOverfittingDemo = () => {
+    loadSample("noisy");
+    setLayers("1-32-32-1");
+    setRate("0.01");
+    setEpochs("5000");
+    setActivation("tanh");
+    setOptimizer("adam");
+    setBatchSize(String(FULL_BATCH));
+    setWeightDecay("0");
+    setEarlyStopping(false);
+    setPatience("1000");
   };
   const handleGenerateRandomData = () => {
     const n = Number(numRandomPoints);
@@ -195,6 +242,10 @@ export default function usePlayground() {
       learningRate: Number(nnLearningRateInput),
       epochs: Number(nnEpochsInput),
       activation: nnActivation,
+      optimizer: nnOptimizer,
+      batchSize: Number(nnBatchSize),
+      weightDecay: Number(nnWeightDecay),
+      patience: nnEarlyStopping ? Number(nnPatience) : 0,
     });
   };
   const predictFor = async (model, value) => {
@@ -263,6 +314,15 @@ export default function usePlayground() {
       pointRadius: 6,
       backgroundColor: isDark ? "#cbd5e1" : "#475569",
     });
+  if (nnModel?.split.validation?.length)
+    memoizedDatasets.push({
+      label: "Validation points (network)",
+      data: nnModel.split.validation,
+      pointRadius: 6,
+      borderWidth: 2,
+      borderColor: "#f59e0b",
+      backgroundColor: "rgba(0, 0, 0, 0)",
+    });
   if (lrModel)
     memoizedDatasets.push({
       label: "Linear regression",
@@ -319,26 +379,72 @@ export default function usePlayground() {
     },
     scales: { x: axis("X"), y: axis("Y") },
   };
+  const hasValidation = lossHistory.some((p) => p.valMse !== undefined);
+  const bestEpoch = !busy && nnModel?.bestEpoch ? nnModel.bestEpoch : null;
+  const lossValues = lossHistory.flatMap((p) =>
+    p.valMse === undefined ? [p.mse] : [p.mse, p.valMse],
+  );
   const lossChartOptions = {
     ...baseOptions,
-    plugins: { ...baseOptions.plugins, legend: { display: false } },
+    plugins: {
+      ...baseOptions.plugins,
+      legend: {
+        display: hasValidation,
+        labels: { color: textColor, boxHeight: 2 },
+      },
+    },
     scales: {
       x: axis("Epoch"),
       y: {
-        ...axis("Training MSE · original Y units²"),
-        type: lossHistory.some((p) => p.mse === 0) ? "linear" : "logarithmic",
+        ...axis("MSE · original Y units²"),
+        type: lossValues.some((value) => value === 0)
+          ? "linear"
+          : "logarithmic",
       },
     },
   };
   const lossChartData = {
     datasets: [
       {
-        label: "NN training MSE",
+        label: "Training MSE",
         data: lossHistory.map((p) => ({ x: p.epoch, y: p.mse })),
         borderColor: "#fb7185",
+        backgroundColor: "#fb7185",
         pointRadius: 1,
         borderWidth: 1.5,
       },
+      ...(hasValidation
+        ? [
+            {
+              label: "Validation MSE",
+              data: lossHistory
+                .filter((p) => p.valMse !== undefined)
+                .map((p) => ({ x: p.epoch, y: p.valMse })),
+              borderColor: "#38bdf8",
+              backgroundColor: "#38bdf8",
+              pointRadius: 1,
+              borderWidth: 1.5,
+            },
+          ]
+        : []),
+      ...(bestEpoch && lossValues.length
+        ? [
+            {
+              label: nnModel.restoredBest
+                ? `Restored best epoch (${bestEpoch.toLocaleString("en-US")})`
+                : `Best validation epoch (${bestEpoch.toLocaleString("en-US")})`,
+              data: [
+                { x: bestEpoch, y: Math.min(...lossValues) },
+                { x: bestEpoch, y: Math.max(...lossValues) },
+              ],
+              borderColor: "#f59e0b",
+              backgroundColor: "#f59e0b",
+              borderDash: [6, 4],
+              pointRadius: 0,
+              borderWidth: 1.5,
+            },
+          ]
+        : []),
     ],
   };
   const formatMetric = (value, type) =>
@@ -363,6 +469,17 @@ export default function usePlayground() {
     setNnEpochsInput,
     nnActivation,
     setNnActivation,
+    nnOptimizer,
+    setNnOptimizer,
+    nnBatchSize,
+    setNnBatchSize,
+    nnWeightDecay,
+    setNnWeightDecay,
+    nnEarlyStopping,
+    setNnEarlyStopping,
+    nnPatience,
+    setNnPatience,
+    loadOverfittingDemo,
     lrModel,
     nnModel,
     lrSlope: lrModel?.slope,
@@ -376,7 +493,17 @@ export default function usePlayground() {
     nnPrediction: nnPoint?.nn ?? null,
     lastPredictedXNN: nnPoint?.x ?? null,
     nnResults: nnModel
-      ? { finalMse: nnModel.train.mse, trainingTimeMs: nnModel.timeMs }
+      ? {
+          finalMse: nnModel.train.mse,
+          trainingTimeMs: nnModel.timeMs,
+          validationMse: nnModel.validation?.mse ?? null,
+          bestEpoch: nnModel.bestEpoch ?? null,
+          epochsRun: nnModel.epochsRun ?? null,
+          stoppedEarly: !!nnModel.stoppedEarly,
+          restoredBest: !!nnModel.restoredBest,
+          fitCount: nnModel.split.fit?.length ?? nnModel.split.train.length,
+          validationCount: nnModel.split.validation?.length ?? 0,
+        }
       : null,
     lrError,
     setLrError,

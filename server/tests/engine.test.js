@@ -14,6 +14,27 @@ test("buffers fragmented stdout and flushes its final line", async () => {
     assert.equal(output.value, "3");
 });
 
+test("parses validation loss from progress lines", async () => {
+    const loss = [];
+    await runEngine(["-e", 'console.log("epoch=4,mse=0.5,val_mse=0.75")'], "", {
+        command: process.execPath,
+        onLoss: (p) => loss.push(p),
+    });
+    assert.deepEqual(loss, [{ epoch: 4, mse: 0.5, valMse: 0.75 }]);
+    for (const line of [
+        "epoch=4,mse=0.5,val_mse=nan",
+        "epoch=4,mse=0.5,val_mse=",
+        "epoch=4,mse=0.5,val=0.7",
+    ]) {
+        await assert.rejects(
+            runEngine(["-e", `console.log(${JSON.stringify(line)})`], "", {
+                command: process.execPath,
+            }),
+            /Invalid training progress/,
+        );
+    }
+});
+
 test("handles failed exit, malformed progress, cancellation and excess output", async () => {
     await assert.rejects(
         runEngine(
