@@ -1,0 +1,9 @@
+.git
+**/node_modules
+**/.DS_Store
+client/build
+client/coverage
+cpp/*.o
+cpp/linear_regression_app
+cpp/*_tests
+*.log

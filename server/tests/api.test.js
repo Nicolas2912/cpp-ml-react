@@ -310,3 +310,26 @@ test("each hidden activation trains and predicts through the reloaded model", as
         );
     }
 });
+
+test("serves the built client with SPA fallback when staticDir is set", async (t) => {
+    const fs = require("node:fs");
+    const os = require("node:os");
+    const path = require("node:path");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ml-static-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    fs.writeFileSync(path.join(dir, "index.html"), "<!doctype html>app");
+    fs.writeFileSync(path.join(dir, "asset.js"), "console.log(1)");
+    const app = await setup(t, { staticDir: dir });
+    const base = `http://127.0.0.1:${app.port}`;
+    assert.equal(await (await fetch(`${base}/`)).text(), "<!doctype html>app");
+    assert.equal(
+        await (await fetch(`${base}/asset.js`)).text(),
+        "console.log(1)",
+    );
+    assert.equal(
+        await (await fetch(`${base}/some/route`)).text(),
+        "<!doctype html>app",
+    );
+    assert.equal((await fetch(`${base}/api/health`)).status, 200);
+    assert.equal((await fetch(`${base}/api/missing`)).status, 401);
+});

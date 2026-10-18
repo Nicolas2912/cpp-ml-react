@@ -1,5 +1,6 @@
 const express = require("express");
 const http = require("node:http");
+const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { WebSocketServer, WebSocket } = require("ws");
 const { validateDataset, LIMITS } = require("./data");
@@ -121,6 +122,14 @@ function createServer(options = {}) {
             res.status(500).json({ error: error.message });
         }
     });
+    // In production one process serves the built client too, so the browser,
+    // API, and WebSocket share an origin exactly as they do behind Vite.
+    if (options.staticDir) {
+        app.use(express.static(options.staticDir));
+        app.get(/^(?!\/api\/|\/ws$).*/, (req, res) =>
+            res.sendFile(path.join(options.staticDir, "index.html")),
+        );
+    }
     app.use((req, res) =>
         res.status(404).json({ error: "Endpoint not found." }),
     );
@@ -146,10 +155,15 @@ function createServer(options = {}) {
 }
 
 if (require.main === module) {
-    const instance = createServer();
+    const instance = createServer({
+        staticDir: process.env.STATIC_DIR
+            ? path.resolve(process.env.STATIC_DIR)
+            : undefined,
+    });
     const port = Number(process.env.PORT || 3001);
-    instance.server.listen(port, "127.0.0.1", () =>
-        console.log(`ML engine API: http://127.0.0.1:${port}`),
+    const host = process.env.HOST || "127.0.0.1";
+    instance.server.listen(port, host, () =>
+        console.log(`ML engine API: http://${host}:${port}`),
     );
     for (const signal of ["SIGINT", "SIGTERM"])
         process.once(signal, () =>
