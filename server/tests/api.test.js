@@ -160,6 +160,10 @@ test("validation, cancellation, ownership and disconnected-session cleanup", asy
     const closed = once(owner.ws, "close");
     owner.ws.close();
     await closed;
+    // The client can observe "close" before the server's close handler runs.
+    for (let i = 0; i < 100 && app.jobs.jobs.size > 0; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    }
     assert.equal(app.jobs.jobs.size, 0);
     assert.equal((await owner.request(`/jobs/${id}`)).status, 401);
 });
