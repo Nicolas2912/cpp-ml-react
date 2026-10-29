@@ -119,7 +119,7 @@ function createServer(options = {}) {
         try {
             res.json(await jobs.predict(req.job, x, model));
         } catch (error) {
-            res.status(500).json({ error: error.message });
+            res.status(error.status || 500).json({ error: error.message });
         }
     });
     // In production one process serves the built client too, so the browser,

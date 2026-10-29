@@ -164,7 +164,7 @@ test("trains both models, compares metrics, and sends true prediction requests",
   );
   expect(
     predictions.map(([, options]) => JSON.parse(options.body).model),
-  ).toEqual(["lr", "nn"]);
+  ).toEqual(["both"]);
   expect(screen.getByText(/outside your dataset/)).toBeInTheDocument();
 });
 
@@ -266,6 +266,113 @@ test("disconnection invalidates models and disables training", async () => {
     screen.getByRole("button", { name: "Compare both models" }),
   ).toBeDisabled();
   expect(await screen.findByRole("alert")).toHaveTextContent(/Connection lost/);
+});
+
+test("reconnecting clears the lost-connection error", async () => {
+  boot();
+  await start();
+  await complete();
+  act(() => socket.onclose());
+  expect(await screen.findByRole("alert")).toHaveTextContent(/Connection lost/);
+  act(() => socket.emit({ type: "session", token: "again" }));
+  await screen.findByText("Connected · ready to train");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("waits for one prediction before sending the next on a shared run", async () => {
+  boot();
+  await start();
+  await complete();
+  const pending = [];
+  const respond = fetch.getMockImplementation();
+  fetch.mockImplementation((url, options) =>
+    url.endsWith("/predict")
+      ? new Promise((resolve) =>
+          pending.push(() => resolve(respond(url, options))),
+        )
+      : respond(url, options),
+  );
+  const predictCalls = () =>
+    fetch.mock.calls.filter(([url]) => url.endsWith("/predict"));
+  fireEvent.click(screen.getByRole("button", { name: "Predict", exact: true }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Neural Network", exact: true }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Predict", exact: true }));
+  await waitFor(() => expect(predictCalls()).toHaveLength(1));
+  await act(async () => pending.shift()());
+  await waitFor(() => expect(predictCalls()).toHaveLength(2));
+  await act(async () => pending.shift()());
+  await screen.findByText(/predicts 3.1/);
+  expect(
+    predictCalls().map(([, options]) => JSON.parse(options.body).model),
+  ).toEqual(["lr", "nn"]);
+});
+
+test("cancels a run before the server returns its ID", async () => {
+  boot();
+  const respond = fetch.getMockImplementation();
+  let created;
+  fetch.mockImplementation((url, options) =>
+    url === "/api/jobs"
+      ? new Promise((resolve) => (created = () => resolve(json({ id: "job" }))))
+      : respond(url, options),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Compare both models" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel training" }));
+  await screen.findByText(/Training cancelled/);
+  await act(async () => created());
+  await waitFor(() =>
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/jobs/job/cancel",
+      expect.anything(),
+    ),
+  );
+  expect(
+    screen.getByRole("button", { name: "Compare both models" }),
+  ).toBeEnabled();
+});
+
+test("rejects empty numeric settings instead of sending zero", async () => {
+  boot();
+  fireEvent.click(screen.getByRole("button", { name: "Neural Network" }));
+  fireEvent.click(screen.getByLabelText("Early stopping"));
+  fireEvent.change(screen.getByLabelText("Patience in epochs"), {
+    target: { value: "" },
+  });
+  fetch.mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "Train NN & Predict" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    /Patience must be at least 1 epoch/,
+  );
+  expect(fetch).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByLabelText("Early stopping"));
+  fireEvent.change(screen.getByLabelText("Weight decay"), {
+    target: { value: "" },
+  });
+  await start("Train NN & Predict");
+  expect(JSON.parse(fetch.mock.calls[0][1].body).weightDecay).toBeNull();
+});
+
+test("shows a readable error when the server response is not JSON", async () => {
+  boot();
+  fetch.mockImplementationOnce(async () => ({
+    ok: false,
+    json: async () => {
+      throw new SyntaxError("Unexpected end of JSON input");
+    },
+  }));
+  fireEvent.click(screen.getByRole("button", { name: "Compare both models" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Request failed. Try again.",
+  );
+  fetch.mockImplementationOnce(async () => {
+    throw new DOMException("signal timed out", "TimeoutError");
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Compare both models" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "The training server took too long to respond.",
+  );
 });
 
 test("ignores other jobs and old snapshots; safely parses architectures and small datasets", () => {

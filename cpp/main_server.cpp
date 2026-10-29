@@ -13,9 +13,8 @@ std::vector<double> parseVector(const std::string& text) {
     std::stringstream stream(text);
     std::string token;
     while (std::getline(stream, token, ',')) {
-        size_t consumed = 0;
-        double value = std::stod(token, &consumed);
-        if (consumed != token.size() || !std::isfinite(value)) {
+        double value = 0;
+        if (!parse_finite_double(token, value)) {
             throw std::invalid_argument("Expected finite comma-separated numbers.");
         }
         values.push_back(value);
@@ -104,10 +103,13 @@ int main(int argc, char** argv) {
         if (argc < 2) throw std::invalid_argument("Choose an operation.");
         const std::string operation = argv[1];
         if (operation == "lr_predict" && argc == 5) {
-            const double slope = std::stod(argv[2]);
-            const double intercept = std::stod(argv[3]);
+            double slope = 0, intercept = 0, x = 0;
+            if (!parse_finite_double(argv[2], slope) || !parse_finite_double(argv[3], intercept) ||
+                !parse_finite_double(argv[4], x)) {
+                throw std::invalid_argument("Expected finite numbers.");
+            }
             std::cout << "predictions=";
-            printVector({slope * std::stod(argv[4]) + intercept});
+            printVector({slope * x + intercept});
             std::cout << '\n';
             return 0;
         }

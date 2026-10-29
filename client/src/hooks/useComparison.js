@@ -37,6 +37,8 @@ export default function useComparison() {
   const token = useRef(null);
   const active = useRef(null);
   const version = useRef(0);
+  // One run can serve LR and NN predictions, and the server allows one at a time.
+  const predictions = useRef(Promise.resolve());
 
   useEffect(() => {
     let stopped = false,
@@ -51,6 +53,8 @@ export default function useComparison() {
         const event = JSON.parse(data);
         if (event.type === "session") {
           token.current = event.token;
+          // The new session starts clean; drop the error from the lost connection.
+          setRun(empty);
           setConnected(true);
           return;
         }
@@ -85,16 +89,28 @@ export default function useComparison() {
       throw new Error(
         "Waiting for the training server. Check that it is running.",
       );
-    const response = await fetch(`/api${path}`, {
-      method: body === undefined ? "GET" : "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token.current}`,
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: AbortSignal.timeout(35000),
-    });
-    const data = await response.json();
+    let response, data;
+    try {
+      response = await fetch(`/api${path}`, {
+        method: body === undefined ? "GET" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token.current}`,
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        signal: AbortSignal.timeout(35000),
+      });
+    } catch (error) {
+      if (error.name === "TimeoutError")
+        throw new Error("The training server took too long to respond.");
+      throw error;
+    }
+    try {
+      data = await response.json();
+    } catch {
+      // A proxy error page or an interrupted response is not JSON.
+      data = {};
+    }
     if (!response.ok)
       throw new Error(data.error || "Request failed. Try again.");
     return data;
@@ -106,7 +122,11 @@ export default function useComparison() {
     setRun({ ...empty, status: "running" });
     try {
       const { id } = await request("/jobs", data);
-      if (revision !== version.current) return;
+      if (revision !== version.current) {
+        // Cancelled or replaced before the ID arrived: stop the orphaned job.
+        request(`/jobs/${id}/cancel`, {}).catch(() => {});
+        return;
+      }
       active.current = id;
       setRun({ ...empty, id, status: "running" });
       // Recover events that arrived before the HTTP acknowledgement.
@@ -124,7 +144,13 @@ export default function useComparison() {
   };
   const cancel = async () => {
     const id = active.current;
-    if (!id) return;
+    if (!id) {
+      // The job ID is still on its way; start() cancels the job when it arrives.
+      if (run.status !== "running") return;
+      version.current++;
+      setRun({ ...empty, status: "cancelled" });
+      return;
+    }
     try {
       const snapshot = await request(`/jobs/${id}/cancel`, {});
       if (id === active.current)
@@ -140,10 +166,14 @@ export default function useComparison() {
   };
   const predict = async (x, id = active.current, model) => {
     const revision = version.current;
-    const prediction = await request(`/jobs/${id}/predict`, {
-      x,
-      ...(model ? { model } : {}),
-    });
+    const next = predictions.current.then(() =>
+      request(`/jobs/${id}/predict`, {
+        x,
+        ...(model ? { model } : {}),
+      }),
+    );
+    predictions.current = next.catch(() => {});
+    const prediction = await next;
     if (revision !== version.current)
       throw new Error("The dataset changed. Train again before predicting.");
     return prediction;
