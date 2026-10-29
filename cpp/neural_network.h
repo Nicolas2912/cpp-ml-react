@@ -27,6 +27,10 @@ enum class Optimizer { SGD, Adam };
 Optimizer parse_optimizer(const std::string& name);
 std::string optimizer_name(Optimizer optimizer);
 
+// Parse a whole token as a finite double. Unlike std::stod and operator>>, this accepts values
+// that underflow to subnormals: weight decay can shrink trained weights into that range.
+bool parse_finite_double(const std::string& text, double& value);
+
 // Outcome of a training run. With a validation set, the network tracks the epoch with the
 // lowest validation MSE; with early stopping it also restores the weights from that epoch.
 struct TrainingSummary {

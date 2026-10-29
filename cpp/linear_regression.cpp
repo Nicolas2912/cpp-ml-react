@@ -162,6 +162,9 @@ double LinearRegression::get_r_squared(const std::vector<double>& X, const std::
     // Calculate residual sum of squares (RSS)
     double rss = mean_squared_error(X, y) * X.size();
 
+    // Constant y has no variance to explain: a perfect fit scores 1, anything else 0.
+    if (tss == 0.0) return rss == 0.0 ? 1.0 : 0.0;
+
     // R² = 1 - RSS/TSS
     return 1.0 - (rss / tss);
 }
@@ -193,8 +196,10 @@ void LinearRegression::fit_analytical(const std::vector<double>& X, const std::v
         denominator += x_diff * x_diff;
     }
     
-    // Avoid division by zero
-    if (std::fabs(denominator) < 1e-10) {
+    // Constant X has no defined slope. Compare values, not a fixed tolerance on the
+    // denominator: Σ(x - mean)² scales with the units of X and is tiny for small inputs.
+    const bool constant_x = std::all_of(X.begin(), X.end(), [&X](double x) { return x == X[0]; });
+    if (constant_x || denominator == 0.0) {
         slope = 0.0;
     } else {
         slope = numerator / denominator;

@@ -28,6 +28,8 @@ ChartJS.register(
 const NOISY_SEED = 12;
 // Batch sizes at or above the number of training points use the full batch.
 export const FULL_BATCH = 1000;
+// An empty or partly typed number field is invalid, not zero.
+const numberOrNaN = (value) => (String(value).trim() ? Number(value) : NaN);
 
 export default function usePlayground() {
   const [inputs, setInputs] = useState({
@@ -91,7 +93,8 @@ export default function usePlayground() {
       });
   }, [run]);
   useEffect(() => {
-    if (!connected) {
+    if (connected) setWsError(null);
+    else {
       revision.current++;
       setLrModel(null);
       setNnModel(null);
@@ -230,6 +233,11 @@ export default function usePlayground() {
       setLrError(parsed.error);
       return;
     }
+    const patience = nnEarlyStopping ? numberOrNaN(nnPatience) : 0;
+    if (model !== "lr" && nnEarlyStopping && !(patience >= 1)) {
+      setNnError("Patience must be at least 1 epoch with early stopping on.");
+      return;
+    }
     revision.current++;
     setTrainingMode(model);
     if (model !== "nn") setLrPoint(null);
@@ -239,18 +247,18 @@ export default function usePlayground() {
       y: parsed.y,
       model,
       layers: nnLayerInput,
-      learningRate: Number(nnLearningRateInput),
-      epochs: Number(nnEpochsInput),
+      learningRate: numberOrNaN(nnLearningRateInput),
+      epochs: numberOrNaN(nnEpochsInput),
       activation: nnActivation,
       optimizer: nnOptimizer,
-      batchSize: Number(nnBatchSize),
-      weightDecay: Number(nnWeightDecay),
-      patience: nnEarlyStopping ? Number(nnPatience) : 0,
+      batchSize: numberOrNaN(nnBatchSize),
+      weightDecay: numberOrNaN(nnWeightDecay),
+      patience,
     });
   };
   const predictFor = async (model, value) => {
     const x = Number(value),
-      cached = model === "lr" ? lrModel : nnModel;
+      cached = model === "nn" ? nnModel : lrModel;
     if (!String(value).trim() || !Number.isFinite(x) || Math.abs(x) > 1e6)
       throw new Error("Enter a finite X between −1,000,000 and 1,000,000.");
     if (!cached) throw new Error("Train this model first.");
@@ -282,8 +290,14 @@ export default function usePlayground() {
     }
   };
   const predictBoth = async (x) => {
-    const lr = await predictFor("lr", x),
+    let lr, nn;
+    // A comparison run holds both models, so one request evaluates them together.
+    if (lrModel && lrModel.id === nnModel?.id)
+      lr = nn = await predictFor("both", x);
+    else {
+      lr = await predictFor("lr", x);
       nn = await predictFor("nn", x);
+    }
     setLrPoint(lr);
     setNnPoint(nn);
     return {

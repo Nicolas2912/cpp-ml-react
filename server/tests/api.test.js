@@ -183,7 +183,9 @@ test("process launch errors and timeouts become terminal job failures", async (t
             const state = await waitFor(owner, body.id, "failed");
             assert.match(
                 state.error,
-                options.command ? /Could not start/ : /timed out/,
+                options.command
+                    ? /Could not start/
+                    : /timed out after 1 second\./,
             );
         });
     }
@@ -261,6 +263,76 @@ test("restored independent LR and NN workflows retain both models", async (t) =>
         (await owner.request("/jobs", { ...data, model: "invalid" })).status,
         400,
     );
+});
+
+test("history eviction keeps the latest completed LR and NN models", async (t) => {
+    const app = await setup(t);
+    const owner = await app.connect();
+    const train = async (body) =>
+        (await owner.request("/jobs", { ...data, ...body })).body.id;
+    const lr = await train({ model: "lr" });
+    await waitFor(owner, lr);
+    await waitFor(owner, await train({ model: "nn", epochs: 100 }));
+    // Cancel a comparison once its linear part is done and the network is training.
+    const both = await train({ epochs: 10000 });
+    const deadline = Date.now() + 10000;
+    while (
+        !owner.events.some(
+            (event) => event.type === "progress" && event.id === both,
+        )
+    ) {
+        assert.ok(Date.now() < deadline, "comparison never reached the NN");
+        await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    await owner.request(`/jobs/${both}/cancel`, {});
+    const cancelled = await waitFor(owner, both, "cancelled");
+    assert.ok(cancelled.result.lr);
+    await waitFor(owner, await train({ model: "nn", epochs: 100 }));
+    assert.equal((await owner.request(`/jobs/${both}`)).status, 404);
+    const prediction = await owner.request(`/jobs/${lr}/predict`, {
+        x: 0.137,
+        model: "lr",
+    });
+    assert.equal(prediction.status, 200);
+    const missing = await owner.request(`/jobs/${lr}/predict`, {
+        x: 0.137,
+        model: "nn",
+    });
+    assert.equal(missing.status, 400);
+    assert.equal(missing.body.error, "This run has no trained neural model.");
+});
+
+test("models with subnormal weights reload for prediction", async (t) => {
+    const app = await setup(t);
+    const owner = await app.connect();
+    // Weight decay shrinks dead ReLU weights below the smallest normal double.
+    const x = Array.from({ length: 60 }, (_, i) => i / 59);
+    const { body } = await owner.request("/jobs", {
+        x,
+        y: x.map((value) => 0.5 + 0.4 * Math.sin(6 * value)),
+        model: "nn",
+        layers: "1-8-1",
+        activation: "relu",
+        learningRate: 0.3,
+        weightDecay: 0.1,
+        epochs: 3000,
+    });
+    await waitFor(owner, body.id);
+    const weights = app.jobs.jobs
+        .get(body.id)
+        .model.serialized.split(" ")
+        .map(Number);
+    assert.ok(
+        weights.some((value) => value !== 0 && Math.abs(value) < 2.3e-308),
+    );
+    for (const value of [0.25, 1e-310]) {
+        const prediction = await owner.request(`/jobs/${body.id}/predict`, {
+            x: value,
+            model: "nn",
+        });
+        assert.equal(prediction.status, 200, prediction.body.error);
+        assert.ok(Number.isFinite(prediction.body.nn));
+    }
 });
 
 test("original two-point and five-point datasets remain supported with honest test scores", async (t) => {

@@ -2,6 +2,10 @@ const { randomUUID } = require("node:crypto");
 const { runEngine, numbers } = require("./engine");
 const { splitData, scaler, scale, unscale, metrics } = require("./data");
 
+// Errors the client caused, such as asking a run for a model it never trained.
+const requestError = (message) =>
+    Object.assign(new Error(message), { status: 400 });
+
 class Jobs {
     constructor({
         timeoutMs = 30000,
@@ -36,11 +40,14 @@ class Jobs {
             throw new Error("Finish or cancel your current run first.");
         const previous = all.filter((job) => job.owner === owner);
         if (previous.length >= 3) {
-            // Keep the latest independently trained LR and NN when evicting history.
-            const latest = [...previous].reverse();
+            // Keep the latest completed LR and NN when evicting history. A cancelled
+            // or failed comparison can still hold an LR result the client never adopted.
+            const latest = [...previous]
+                .reverse()
+                .filter((item) => item.status === "completed");
             const keep = new Set([
-                latest.find((item) => item.result?.lr)?.id,
-                latest.find((item) => item.result?.nn)?.id,
+                latest.find((item) => item.result.lr)?.id,
+                latest.find((item) => item.result.nn)?.id,
             ]);
             const evicted =
                 previous.find((item) => !keep.has(item.id)) || previous[0];
@@ -302,7 +309,7 @@ class Jobs {
             const selected = model || job.data.model || "both";
             if (selected !== "nn") {
                 if (!job.result.lr)
-                    throw new Error("This run has no trained linear model.");
+                    throw requestError("This run has no trained linear model.");
                 const lr = await runEngine(
                     ["lr_predict", String(slope), String(intercept), String(x)],
                     "",
@@ -312,7 +319,7 @@ class Jobs {
             }
             if (selected !== "lr") {
                 if (!job.result.nn)
-                    throw new Error("This run has no trained neural model.");
+                    throw requestError("This run has no trained neural model.");
                 const nn = await runEngine(
                     ["nn_predict"],
                     `${serialized}\n${scale(x, sx)}\n`,

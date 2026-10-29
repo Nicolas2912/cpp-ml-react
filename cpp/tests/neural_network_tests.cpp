@@ -170,6 +170,20 @@ int main() {
             runner.expectNear(restored.predict({x})[0], original.predict({x})[0], 1e-14,
                               "serialized model reproduces actual inference");
         }
+        runner.expectTrue(restored.weights_ == original.weights_ && restored.biases_ == original.biases_,
+                          "serialized model restores every parameter bit for bit");
+    }
+    {
+        // Weight decay shrinks the weights of dead ReLU units into the subnormal range.
+        NeuralNetwork original({1, 2, 1}, 0.1, 42, Activation::ReLU);
+        original.weights_[0][0][0] = 4.9406564584124654e-324;
+        original.weights_[1][0][1] = -1e-310;
+        std::ostringstream saved;
+        original.save(saved);
+        std::istringstream input(saved.str());
+        NeuralNetwork restored = NeuralNetwork::load(input);
+        runner.expectTrue(restored.weights_ == original.weights_ && restored.biases_ == original.biases_,
+                          "serialized model restores subnormal parameters");
     }
     runner.expectThrows("rejects truncated model", [] {
         std::istringstream data("3 1 8 1 sigmoid 0.2");
@@ -250,6 +264,8 @@ int main() {
         NeuralNetwork restored = NeuralNetwork::load(input);
         runner.expectNear(restored.predict({0.3})[0], original.predict({0.3})[0], 1e-14,
                           "serialized " + activation_name(activation) + " model reproduces inference");
+        runner.expectTrue(restored.weights_ == original.weights_ && restored.biases_ == original.biases_,
+                          "serialized " + activation_name(activation) + " model restores every parameter");
     }
     // With weight decay, backprop must follow the gradient of 0.5 * (pred - target)^2 + 0.5 * l2 * sum(W^2).
     // Check a hidden weight, an output weight, and a bias (biases are not decayed).

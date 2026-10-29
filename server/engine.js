@@ -30,10 +30,11 @@ function runEngine(
             child.kill("SIGKILL");
         };
         const cancel = () => stop("Training cancelled.");
+        const seconds = Math.max(1, Math.round(timeoutMs / 1000));
         const timer = setTimeout(
             () =>
                 stop(
-                    "Training timed out after 30 seconds. Reduce epochs or network size.",
+                    `Training timed out after ${seconds} second${seconds === 1 ? "" : "s"}. Reduce epochs or network size.`,
                 ),
             timeoutMs,
         );

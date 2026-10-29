@@ -160,6 +160,12 @@ int main() {
     runner.expectThrows("rejects missing numeric token", [] { parseVector("1,,2"); });
     runner.expectThrows("rejects trailing delimiter", [] { parseVector("1,2,"); });
     runner.expectThrows("rejects non-finite input", [] { parseVector("1,nan"); });
+    runner.expectThrows("rejects overflowing input", [] { parseVector("1,1e999"); });
+    {
+        auto parsed = parseVector("0,1e-310,4.9406564584124654e-324");
+        runner.expectTrue(parsed.size() == 3 && parsed[1] == 1e-310 && parsed[2] > 0,
+                          "parseVector accepts subnormal values");
+    }
     runner.expectThrows("rejects missing layer", [] { parseLayerSizes("1--8-1"); });
     runner.expectThrows("rejects oversized layers", [] { parseLayerSizes("1-100-1"); });
 

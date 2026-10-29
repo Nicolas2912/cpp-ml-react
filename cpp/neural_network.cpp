@@ -2,6 +2,7 @@
 #include <random>       // For random number generation
 #include <stdexcept>    // For exceptions
 #include <algorithm>    // For std::transform
+#include <cstdlib>      // For std::strtod
 #include <iomanip>
 #include <limits>
 #include <numeric>      // For std::inner_product
@@ -20,6 +21,12 @@ std::string activation_name(Activation activation) {
         case Activation::Sigmoid:
         default: return "sigmoid";
     }
+}
+
+bool parse_finite_double(const std::string& text, double& value) {
+    char* end = nullptr;
+    value = std::strtod(text.c_str(), &end);
+    return !text.empty() && end == text.c_str() + text.size() && std::isfinite(value);
 }
 
 Optimizer parse_optimizer(const std::string& name) {
@@ -584,7 +591,10 @@ NeuralNetwork NeuralNetwork::load(std::istream& in) {
     if (!(in >> activation)) throw std::invalid_argument("Invalid model activation.");
     NeuralNetwork model(sizes, 0.01, 42, parse_activation(activation));
     auto read_value = [&in](double& value) {
-        if (!(in >> value) || !std::isfinite(value)) throw std::invalid_argument("Invalid model parameter.");
+        std::string token;
+        if (!(in >> token) || !parse_finite_double(token, value)) {
+            throw std::invalid_argument("Invalid model parameter.");
+        }
     };
     for (size_t l = 0; l < model.weights_.size(); ++l) {
         for (auto& row : model.weights_[l]) for (auto& value : row) read_value(value);

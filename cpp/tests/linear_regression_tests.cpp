@@ -123,6 +123,38 @@ int main() {
     }
 
     {
+        LinearRegression model;
+        std::vector<double> X{1e-7, 2e-7, 3e-7, 4e-7};
+        std::vector<double> y{1.0, 2.0, 3.0, 4.0};
+        model.fit_analytical(X, y);
+        runner.expectNear(model.get_slope(), 1e7, 1e-3, "fit_analytical handles small-scale X (slope)");
+        runner.expectNear(model.get_intercept(), 0.0, 1e-9, "fit_analytical handles small-scale X (intercept)");
+    }
+
+    {
+        LinearRegression model;
+        std::vector<double> X{2.0, 2.0, 2.0};
+        std::vector<double> y{1.0, 2.0, 3.0};
+        model.fit_analytical(X, y);
+        runner.expectTrue(model.get_slope() == 0.0, "fit_analytical uses zero slope for constant X");
+        runner.expectNear(model.get_intercept(), 2.0, 1e-12, "fit_analytical uses mean y for constant X");
+    }
+
+    {
+        LinearRegression model;
+        std::vector<double> X{1.0, 2.0, 3.0};
+        std::vector<double> y{5.0, 5.0, 5.0};
+        model.fit_analytical(X, y);
+        runner.expectTrue(model.get_r_squared(X, y) == 1.0, "get_r_squared is one for a perfect fit of constant y");
+        runner.expectTrue(model.get_r_squared(X, {5.0, 6.0, 5.0}) < 1.0 &&
+                              std::isfinite(model.get_r_squared(X, {5.0, 6.0, 5.0})),
+                          "get_r_squared stays finite");
+        LinearRegression off;
+        off.fit_analytical({1.0, 2.0, 3.0}, {1.0, 2.0, 3.0});
+        runner.expectTrue(off.get_r_squared(X, y) == 0.0, "get_r_squared is zero for a wrong fit of constant y");
+    }
+
+    {
         LinearRegression model(0.05, 2000, 2);
         std::vector<double> X{1.0, 2.0, 3.0, 4.0, 5.0};
         std::vector<double> y{2.0, 4.0, 6.0, 8.0, 10.0};

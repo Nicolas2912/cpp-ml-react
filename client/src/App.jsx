@@ -513,7 +513,6 @@ function App() {
                       <button
                         type="button"
                         className={`${outlineButtonClass} w-full`}
-                        disabled={!run.id}
                         onClick={cancel}
                       >
                         Cancel training
