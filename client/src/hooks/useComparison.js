@@ -100,15 +100,14 @@ export default function useComparison() {
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         signal: AbortSignal.timeout(35000),
       });
+      data = await response.json();
     } catch (error) {
       if (error.name === "TimeoutError")
         throw new Error("The training server took too long to respond.");
-      throw error;
-    }
-    try {
-      data = await response.json();
-    } catch {
+      if (!response) throw error;
       // A proxy error page or an interrupted response is not JSON.
+      if (response.ok)
+        throw new Error("The training server sent an invalid response.");
       data = {};
     }
     if (!response.ok)

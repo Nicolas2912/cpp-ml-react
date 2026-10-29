@@ -366,6 +366,30 @@ test("shows a readable error when the server response is not JSON", async () => 
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Request failed. Try again.",
   );
+  fetch.mockImplementationOnce(async () => ({
+    ok: true,
+    json: async () => {
+      throw new SyntaxError("Unexpected end of JSON input");
+    },
+  }));
+  fireEvent.click(screen.getByRole("button", { name: "Compare both models" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "The training server sent an invalid response.",
+  );
+  expect(fetch).not.toHaveBeenCalledWith(
+    "/api/jobs/undefined",
+    expect.anything(),
+  );
+  fetch.mockImplementationOnce(async () => ({
+    ok: true,
+    json: async () => {
+      throw new DOMException("signal timed out", "TimeoutError");
+    },
+  }));
+  fireEvent.click(screen.getByRole("button", { name: "Compare both models" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "The training server took too long to respond.",
+  );
   fetch.mockImplementationOnce(async () => {
     throw new DOMException("signal timed out", "TimeoutError");
   });
